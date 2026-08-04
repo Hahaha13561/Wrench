@@ -1,0 +1,209 @@
+/# WRENCH STANDARD LIBRARY
+    std/collections.wr
+    Collections Library
+#/
+
+class List {
+    var data;
+    int capacity;
+    int length;
+
+    define init() {
+        this.capacity = 10;
+        this.length = 0;
+        this.data = alloc(this.capacity * 8);
+    }
+
+    define push(var item) {
+        if (this.length =? this.capacity) {
+            this.capacity *= 2;
+            this.data = realloc(this.data, this.capacity * 8);
+        }
+
+        this.data[this.length] = item;
+        this.length += 1;
+    }
+
+    define get(int index) {
+        if (index => this.length) {
+            print("List Error: Index Out Of Bounds\n");
+            trigger 99;
+        }
+        return this.data[index];
+    }
+
+    define set(int index, var item) {
+        if (index => this.length) {
+            print("List Error: Index Out Of Bounds\n");
+            trigger 99;
+        }
+        this.data[index] = item;
+    }
+
+    define pop() {
+        if (this.length =? 0) {
+            print ("List Error: Cannot pop from empty list\n");
+            trigger 99;
+        }
+        this.length -= 1;
+        return this.data[this.length];
+    }
+
+    define clear() {
+        delete this.data;
+        this.capacity = 10;
+        this.length = 0;
+        this.data = alloc(this.capacity * 8);
+    }
+
+    define destroy() {
+        delete this.data;
+    }
+}
+
+class Map {
+    List keys;
+    List values;
+
+    define init() {
+        this.keys = new List();
+        this.values = new List();
+    }
+
+    define set(str key, var value) {
+        var i = 0;
+        var len = this.keys.length;
+
+        while (i < len) {
+            if (this.keys.get(i) cast str =? key) {
+                this.values.set(i, value);
+                return 0;
+            }
+            i += 1;
+        }
+
+        this.keys.push(key);
+        this.values.push(value);
+        return 0;
+    }
+
+    define get(str key) {
+        var i = 0;
+        var len = this.keys.length;
+
+        while (i < len) {
+            if (this.keys.get(i) cast str =? key) {
+                return this.values.get(i);
+            }
+            i += 1;
+        }
+
+        print("Map Error: Key Not Found -->");
+        print(key);
+        print("\n");
+        trigger 99;
+    }
+
+    define has(str key) {
+        var i = 0;
+        var len = this.keys.length;
+
+        while (i < len) {
+            if (this.keys.get(i) cast str =? key) {
+                return true;
+            }
+            i += 1;
+        }
+        return false;
+    }
+
+    define destroy() {
+        this.keys.destroy();
+        free(this.keys);
+
+        this.values.destroy();
+        free(this.values);
+    }
+}
+
+// FOLLOWING CODELINES ARE FOR TESTING.
+// ----------------------------------------
+/# 
+include "std/collections.wr";
+
+print("--- DYNAMIC LIST TEST ---\n");
+
+var my_list = new List();
+
+print("Pushing elements...\n");
+my_list.push(10);
+my_list.push(20);
+my_list.push(30);
+
+print("Element at index 1 (should be 20): ");
+print_int(my_list.get(1) cast int);
+print("\n");
+
+print("List Length: ");
+print_int(my_list.length);
+print("\n");
+
+print("Popped item (should be 30): ");
+print_int(my_list.pop() cast int);
+print("\n");
+
+print("New Length: ");
+print_int(my_list.length);
+print("\n");
+
+// Triggering Out of Bounds intentionally to test Memory Safety
+
+my_list.destroy();
+free(my_list);
+
+print("--- TEST COMPLETE ---\n");
+
+// ----------------------------------------
+include "std/collections.wr";
+include "std/string.wr";
+
+print("[*] Testing List...\n");
+var my_list = new List();
+my_list.push(10);
+my_list.push(20);
+my_list.push(30);
+print("Popped from List (should be 30): ");
+print_int(my_list.pop() cast int);
+print("\n\n");
+my_list.destroy();
+free(my_list);
+
+print("[*] Testing Map (Dictionary)...\n");
+var sym_table = new Map();
+
+sym_table.set("sayi", "int");
+sym_table.set("metin", "string");
+sym_table.set("aktif_mi", "bool");
+
+print("Type of 'metin' (should be string): ");
+print(sym_table.get("metin") cast str);
+print("\n");
+
+sym_table.set("sayi", "double");
+print("Updated type of 'sayi' (should be double): ");
+print(sym_table.get("sayi") cast str);
+print("\n");
+
+if (sym_table.has("aktif_mi")) {
+    print("'aktif_mi' exists in Map!\n");
+}
+
+if (sym_table.has("olmayan_degisken") =? false) {
+    print("'olmayan_degisken' does NOT exist! (Correct)\n");
+}
+
+sym_table.destroy();
+free(sym_table);
+
+print("\n--- ALL TESTS PASSED ---\n");
+/#

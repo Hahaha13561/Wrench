@@ -1,0 +1,454 @@
+/# WRENCH STANDARD LIBRARY
+    std/math.wr
+    Math Library
+#/
+
+// PART 1: BASICAL MATHEMATICAL CONSTANTS
+double PI = 3.141592653589793;
+
+double TAU = 6.283185307179586;
+
+double E = 2.718281828459045;
+
+double PHI = 1.618033988749895;
+
+double SQRT2 = 1.414213562373095;
+
+double SQRT1_2 = 0.707106781186548;
+
+double LN2 = 0.693147180559945;
+
+double LN10 = 2.302585092994046;
+
+double LOG2E = 1.442695040888963;
+
+double LOG10E = 0.434294481903252;
+
+// PART 2: TRIGONOMETRY, HYPERBOLIC FUNCTIONS AND ANGLE TRANSFORMATIONS
+
+// ANGLE TRANFSORMATIONS
+define rad_to_deg(double rad) {
+    return rad * (180.0 / PI);
+}
+
+define deg_to_rad(double deg) {
+    return deg * (PI / 180.0);
+}
+
+// TRIGIONOMETRIC FUNCTIONS
+define sin(double x) {
+    var val = x % TAU;
+    if (val > PI) {
+        val -= TAU;
+    }
+    butif (val < -PI) {
+        val += TAU;
+    }
+
+    var term = val;
+    var sum = val;
+    var n = 1.0;
+
+    while (n <= 10.0) {
+        term = -term * val * val / ((2.0 * n) * (2.0 * n + 1.0));
+        sum += term;
+        n += 1.0;
+    }
+    return sum;
+}
+
+define cos(double x) {
+    return sin(x + (PI / 2.0));
+}
+
+define tan(double x) {
+    return sin(x) / cos(x);
+}
+
+define cot(double x) {
+    return cos(x) / sin(x);
+}
+
+define sec(double x) {
+    return 1.0 / cos(x);
+}
+
+define csc(double x) {
+    return 1.0 / sin(x);
+}
+
+//INVERTED TRIGONOMETRIC FUNCTIONS
+define atan(double x) {
+    if (x > 1.0) {
+        return (PI / 2.0) - atan(1.0/x);
+    }
+    butif (x < -1.0) {
+        return (-PI / 2.0) - atan(1.0/x);
+    }
+
+    var term = x;
+    var sum = x;
+    var x_sq = x * x;
+    var n = 1.0;
+
+    while (n <= 15.0) {
+        term = -term * x_sq;
+        sum += term / (2.0 * n + 1.0);
+        n += 1.0;
+    }
+
+    return sum;
+}
+
+define _sqrt_approx(double val) {
+    if (val <= 0.0) {
+        return 0.0;
+    }
+    var guess = val / 2.0;
+    var i = 0;
+    while (i < 10) {
+        guess = 0.5 * (guess + (val / guess));
+        i += 1;
+    }
+    return guess;
+}
+
+define asin(double x) {
+    if (x >= 1.0) {
+        return PI / 2.0;
+    }
+    butif (x <= -1.0) {
+        return -PI / 2.0;
+    }
+    return atan(x / _sqrt_approx(1.0 - (x * x)));
+}
+
+define acos(double x) {
+    return (PI / 2.0) - asin(x);
+}
+
+define atan2(double y, double x) {
+    if (x > 0.0) {
+        return atan(y / x);
+    }
+    butif (x < 0.0) {
+        if (y >= 0.0) {
+            return atan(y / x) + PI;
+        }
+        else {
+            return atan(y / x) - PI;
+        }
+    }
+    else {
+        if (y > 0.0) {
+            return PI / 2.0;
+        }
+        butif (y < 0.0) {
+            return -PI / 2.0;
+        }
+    }
+    return 0.0;
+}
+
+define sinh(double x) {
+    var term = x;
+    var sum = x;
+    var n = 1.0;
+
+    while (n <= 10.0) {
+        term = term * x * x / ((2.0 * n) * (2.0 * n + 1.0));
+        sum += term;
+        n += 1.0;
+    }
+    return sum;
+}
+
+define cosh(double x) {
+    var term = 1.0;
+    var sum = 1.0;
+    var n = 1.0;
+
+    while (n <= 10.0) {
+        term = term * x * x / ((2.0 * n - 1.0) * (2.0 * n));
+        sum += term;
+        n += 1.0;
+    }
+    return sum;
+}
+
+define tanh(double x) {
+    return sinh(x) / cosh(x);
+}
+
+//POWERS AND ROOTS
+define pow(double base, double exp) {
+    if (base =? 0.0) {
+        if (exp =? 0.0) {
+            return 1.0; //You know accepting 0 to the power of 0 as 1 is sort of stupid in my opinion mathematichians should do their shi better
+        }
+        return 0.0;
+    }
+
+    if (base > 0.0) {
+        return base ^ exp;
+    }
+
+    var is_integer = ((exp % 1.0) =? 0.0);
+    var is_even = ((exp % 2.0) =? 0.0);
+
+    if (is_integer) {
+        if (is_even) {
+            return (-base) ^ exp;
+        }
+        else {
+            return -((-base) ^ exp);
+        }
+    }
+
+    return 0.0;
+}
+
+define sqrt(double x) {
+    if (x <= 0.0) {
+        return 0.0;
+    }
+    return x ^ 0.5;
+}
+
+define cbrt(double x) {
+    var third = 1.0/3.0;
+    if (x < 0.0) {
+        return -((-x) ^ third);
+    }
+    return x ^ third;
+}
+
+define exp(double x) {
+    return E ^ x;
+}
+
+//LOGARITHMS
+define log(double x) {
+    if (x <= 0.0) {
+        return 0.0;
+    }
+    var count = 0.0;
+    while (x > 2.0) {
+        x /= E;
+        count += 1.0;
+    }
+    while (x < 0.5) {
+        x *= E;
+        count -= 1.0;
+    }
+
+    var z = (x - 1.0) / (x + 1.0);
+    var z_sq = z * z;
+    var term = z;
+    var sum = 0.0;
+    var n = 1.0;
+
+    while (n <= 50.0) {
+        sum += term / n;
+        term = term * z_sq;
+        n += 2.0;
+    }
+    
+    return (2.0 * sum) + count;
+}
+
+define log10(double x) {
+    return log(x) / LN10;
+}
+
+define log2(double x) {
+    return log(x) / LN2;
+}
+
+//ABSOLUTE VALUE
+// FOR COMPAREABLE TYPES
+define num_abs(var x) {
+    if (x < 0) {
+        return -x;
+    }
+    return x;
+}
+// FOR FLOATING POINT
+define fabs(double x) {
+    if (x < 0.0) {
+        return -x;
+    }
+    return x;
+}
+
+//ROUNDING AND TRUNCATION
+define trunc(double x) {
+    return x - (x % 1.0);
+}
+
+define floor(double x) {
+    var rem = x % 1.0;
+
+    if (rem =? 0.0) {
+        return x;
+    }
+
+    if (x < 0.0) {
+        return x - rem - 1.0;
+    }
+    
+    return x - rem;
+}
+
+define ceil(double x) {
+    var rem = x % 1.0;
+    
+    if (rem =? 0.0) {
+        return x;
+    }
+    
+    if (x > 0.0) {
+        return x - rem + 1.0;
+    }
+    
+    return x - rem;
+}
+
+define round(double x) {
+    if (x >= 0.0) {
+        return floor(x + 0.5);
+    }
+    return ceil(x - 0.5);
+}
+
+//COMPARISON AND CLASSIFICATION
+define min(var a, var b) {
+    if (a < b) {
+        return a;
+    }
+    return b;
+}
+
+define max(var a, var b) {
+    if (a > b) {
+        return a;
+    }
+    return b;
+}
+
+define clamp(var val, var min_val, var max_val) {
+    if (val < min_val) {
+        return min_val;
+    }
+    butif (val > max_val) {
+        return max_val;
+    }
+    return val;
+}
+
+//RANDOM NUMBER GENERATION (PRNG)
+var _rand_seed = 13561;
+var _is_seeded = false;
+
+define srand(int seed) {
+    _rand_seed = seed;
+    _is_seeded = true;
+}
+
+define seed_time() {
+    var tp = alloc(16);
+    syscall(228,0,tp);
+    var seed = tp[0] ^ tp [1];
+    free(tp);
+    srand(seed);
+}
+
+define rand() {
+    if (not _is_seeded) {
+        seed_time();
+    }
+
+    _rand_seed = (_rand_seed * 1103515245) + 12345;
+    return num_abs(_rand_seed % 2147483647);
+}
+
+define rand_range(int min_val, int max_val) {
+    if (min_val >= max_val) {
+        return min_val;
+    }
+    var range = (max_val - min_val) + 1;
+    return min_val + (rand() % range);
+}
+
+define rand_float() {
+    return (rand() cast double) / 2147483647.0;
+}
+
+//GEOMETRY, HYPOTHENUSE AND MEASUREMENT ALGORITHMS
+define hypot(double x, double y) {
+    return sqrt((x * x) + (y * y));
+}
+
+define dist2d(double x1, double y1, double x2, double y2) {
+    var dx = x2 - x1;
+    var dy = y2 - y1;
+    return sqrt((dx * dx) + (dy * dy));
+}
+
+define dist3d(double x1, double y1, double z1, double x2, double y2, double z2) {
+    var dx = x2 - x1;
+    var dy = y2 - y1;
+    var dz = z2 - z1;
+    return sqrt((dx * dx) + (dy * dy) + (dz * dz));
+}
+
+define manhattan(var x1, var y1, var x2, var y2) {
+    return num_abs(x2 - x1) + num_abs(y2 - y1);
+}
+
+// FOLLOWING CODELINES ARE FOR TESTING.
+// ----------------------------------------
+/#
+include "std/math.wr";
+
+
+
+print("--- 1. CONSTANTS ---\n");
+print("PI       : "); print_float(PI); print("\n");
+print("E (Euler)      : "); print_float(E); print("\n");
+print("Golden Ratio(PHI): "); print_float(PHI); print("\n\n");
+
+
+print("--- 2. TRIGONOMETRY ---\n");
+var rad = deg_to_rad(30.0);
+print("30 Degrees -> Radian : "); print_float(rad); print("\n");
+print("sin(30 deg / rad)   : "); print_float(sin(rad)); print(" (should be 0.5)\n");
+print("cos(60 deg)         : "); print_float(cos(deg_to_rad(60.0))); print(" (should be 0.5)\n");
+print("atan2(10.0, 10.0)   : "); print_float(rad_to_deg(atan2(10.0, 10.0))); print(" (should be 45 degrees)\n\n");
+
+print("--- 3. POWER, ROOT AND LOGARITHMS ---\n");
+print("2^10 (pow)          : "); print_float(pow(2.0, 10.0)); print(" (should be 1024.0)\n");
+print("sqrt(144.0)         : "); print_float(sqrt(144.0)); print(" (should be 12.0)\n");
+print("cbrt(-27.0)         : "); print_float(cbrt(-27.0)); print(" (should be -3.0)\n");
+print("ln(E^5)             : "); print_float(log(pow(E, 5.0))); print(" (should be 5.0)\n");
+print("log10(1000.0)       : "); print_float(log10(1000.0)); print(" (should be 3.0)\n\n");
+
+print("--- 4. ROUNDING AND CLAMP ---\n");
+print("num_abs(-99)        : "); print_int(num_abs(-99)); print("\n");
+print("floor(3.9)          : "); print_float(floor(3.9)); print(" (should be 3.0)\n");
+print("ceil(-3.9)          : "); print_float(ceil(-3.9)); print(" (should be -3.0)\n");
+print("round(4.5)          : "); print_float(round(4.5)); print(" (should be 5.0)\n");
+print("clamp(150, 0, 100)  : "); print_int(clamp(150, 0, 100)); print(" (is limited with 100)\n\n");
+
+print("--- 5. RANDOM NUMBERS (Auto-Seeded) ---\n");
+print("Die Roll (1-6)     : "); print_int(rand_range(1, 6)); print("\n");
+print("Die Roll (1-6)     : "); print_int(rand_range(1, 6)); print("\n");
+print("Random Float(0-1) : "); print_float(rand_float()); print("\n\n");
+
+print("--- 6. GEOMETRY AND DISTANCE ---\n");
+print("Hypot(3.0, 4.0)     : "); print_float(hypot(3.0, 4.0)); print(" (should be 5.0)\n");
+print("2D Distance (0,0->6,8): "); print_float(dist2d(0.0, 0.0, 6.0, 8.0)); print(" (should be 10.0)\n");
+print("Manhattan (0,0->3,4): "); print_int(manhattan(0, 0, 3, 4)); print(" (should be 7)\n\n");
+
+print("        ALL TESTS COMPLETE         \n");
+#/

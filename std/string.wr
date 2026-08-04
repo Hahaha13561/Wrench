@@ -1,0 +1,154 @@
+/# WRENCH STANDARD LIBRARY
+    std/string.wr
+    String Library
+#/
+
+define str_len(str text) {
+    var i = 0;
+    while (text[i] != 0 cast char) {
+        i += 1;
+    }
+    return i;
+}
+
+define substring(str text, int start, int end) {
+    var length = end - start;
+    str result = alloc(length + 1);
+
+    var i = 0;
+    while (i < length) {
+        result[i] = text[start + i];
+        i += 1;
+    }
+    result[length] = 0 cast char;
+    return result;
+}
+
+define uppercase(str text) {
+    var length = str_len(text);
+    str result = alloc(length+1);
+
+    var i = 0;
+    while (i < length) {
+        var c = text[i] cast int;
+    
+    // ASCII 'a' = 97, 'z' = 122
+        if (c => 97 and c <= 122) {
+            c -= 32;
+        }
+
+        result[i] = c cast char;
+        i += 1;
+    }    
+    result[length] = 0 cast char;
+    return result;
+}
+
+define lowercase(str text) {
+    var length = str_len(text);
+    str result = alloc(length + 1);
+
+    var i = 0;
+    while (i < length) {
+        var c = text[i] cast int;
+
+        // ASCII 'A' = 65, 'Z' = 90
+        if ( c => 65 and c <= 90) {
+            c += 32;
+        }
+
+        result[i] = c cast char;
+        i += 1;
+    }
+    result[length] = 0 cast char;
+    return result;
+}
+
+define split(str text, char delimeter) {
+    var length = str_len(text);
+    var count = 1;
+    var i = 0;
+
+    while (i < length) {
+        if (text[i] =? delimeter) {
+            count += 1;
+        }
+        i += 1;
+    }
+
+    var list = alloc(count * 8);
+    var part_index = 0;
+    var start = 0;
+    i = 0;
+
+    while (i <= length) {
+        if (text[i]  =? delimeter or text[i] =? 0 cast char) {
+            list[part_index] = substring(text, start, i);
+            part_index += 1;
+            start = i + 1;
+        }
+        i += 1;
+    }
+
+    return list;
+}
+
+define parse_int(str text) {
+    return text cast int;
+}
+
+define to_string(int number) {
+    return number cast str;
+}
+
+define concat(str left, str right) {
+    return left + right;
+}
+
+// FOLLOWING CODELINES ARE FOR TESTING.
+// ----------------------------------------
+/# 
+include "std/string.wr";
+
+var test_str = "Wrench Compiler";
+print("Original Text: ");
+print(test_str);
+print("\n");
+
+print("Length: ");
+print(str_len(test_str) cast int);
+print("\n");
+
+print("Uppercase: ");
+print(uppercase(test_str));
+print("\n");
+
+print("Lowercase: ");
+print(lowercase(test_str));
+print("\n");
+
+var num_str = "2026";
+var num = parse_int(num_str);
+print("Parsed Integer + 10: ");
+print(num + 10); 
+print("\n");
+
+var year_str = to_string(num + 10);
+print("Concat Test: ");
+print(concat("Year is ", year_str));
+print("\n");
+
+var sentence = "apple,banana,cherry";
+var fruits = split(sentence, "," cast char);
+
+print("Split Test (Second item): ");
+print(fruits[1]);
+print("\n");
+
+
+if (fruits[0] ?= "apple") {
+    print("Equality operator (?=) works perfectly!\n");
+}
+
+print("\n--- TEST COMPLETE ---\n");
+/#

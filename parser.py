@@ -1,0 +1,1336 @@
+class NumberNode:
+    """Ağacın en uç yaprakları sadece sayı değeri tutarlar."""
+    def __init__(self, tok):
+        self.tok = tok #Lexer'dan gelen token
+
+    def __repr__(self):
+        #Okunaklılık için:
+        return f'{self.tok[1]}'
+    
+
+class VarAccessNode:
+    """Değişken çağırma düğümü"""
+    def __init__(self, var_name_tok):
+        self.var_name_tok = var_name_tok
+
+    def __repr__(self):
+        return f'{self.var_name_tok[1]}'
+
+
+class KeywordNode:
+    """True, False ve Null gibi sabit dil kelimeleri."""
+    def __init__(self, tok):
+        self.tok = tok
+
+    def __repr__(self):
+        return f'{self.tok[1]}'
+
+
+class TriggerNode:
+    """Hata fırlatma node'u"""
+    def __init__(self, err_value_node):
+        self.err_value_node = err_value_node
+
+    def __repr__(self):
+        return f"TRIGGER ERROR({self.err_value_node})"
+
+
+class IfNode:
+    """if, butif, ve else yapılarını barındıran node."""
+    def __init__(self, cases, else_case):
+        self.cases = cases
+        self.else_case = else_case
+
+    def __repr__(self):
+        res = f"IF ({self.cases[0][0]}):\n    {self.cases[0][1]}"
+        for cond, block in self.cases[1:]:
+            res += f"\n BUTIF ({cond}):\n {block}"
+        if self.else_case:
+            res += f"\n ELSE (else):\n   {self.else_case}"
+        return res
+
+
+class UnaryOpNode:
+    """Tekil işlemler node'u."""
+    def __init__(self, op_tok, node):
+        self.op_tok = op_tok
+        self.node = node
+    
+    def __repr__(self):
+        return f"({self.op_tok[1]} {self.node})"
+        
+
+class WhileNode:
+    """While döngüsü node'u."""
+    def __init__(self, condition, body):
+        self.condition_node = condition
+        self.body_node = body
+    
+    def __repr__(self):
+        return f"WHILE ({self.condition_node}):\n   {self.body_node}"
+    
+
+class LimitsNode:
+    """Range Array döndüren fonksiyon."""
+    def __init__(self, start_node, end_node):
+        self.start_node = start_node
+        self.end_node = end_node
+
+    def __repr__(self):
+        return f"LIMITS_ARRAY({self.start_node} -> {self.end_node})"
+
+
+class ForNode:
+    """For döngüsü."""
+    def __init__(self, var_name_tok, iter_node, body):
+        self.var_name_tok = var_name_tok
+        self.iter_node = iter_node
+        self.body = body
+
+    def __repr__(self):
+        return f"FOR ({self.var_name_tok[1]} IN {self.iter_node}):\n  {self.body}"
+
+
+class WhenNode:
+    def __init__(self, condition, body, isglobal=False):
+        self.condition = condition
+        self.body = body
+        self.isglobal = isglobal
+
+    def __repr__(self):
+        g_str = "GLOBAL " if self.isglobal else ""
+        return f"{g_str}WHEN ({self.condition}):\n  {self.body}"
+
+
+class VarAssignNode:
+    """Değişken atama düğümü"""
+    def __init__(self,modifier_tok, type_tok, var_name_tok, value_node):
+        self.modifier_tok = modifier_tok
+        self.type_tok = type_tok
+        self.var_name_tok = var_name_tok
+        self.value_node = value_node
+
+    def __repr__(self):
+        mod_str = f"{self.modifier_tok[1]} " if self.modifier_tok else ""
+        return f"(ASSIGN: {mod_str}{self.type_tok[1]} {self.var_name_tok[1]} = {self.value_node})"
+    
+
+class BinOpNode:
+    """Binary Operation Node: (İkili İşlem Düğümü)"""
+    def __init__(self, left_node, op_tok, right_node):
+        self.left_node = left_node
+        self.op_tok = op_tok
+        self.right_node = right_node
+
+    def __repr__(self):
+        return f'({self.left_node} {self.op_tok[1]} {self.right_node})'
+    
+
+class BlockNode:
+    """Kod bloğu node'larını temsil eder({}). """
+    def __init__(self, statements):
+        self.statements = statements
+
+    def __repr__(self):
+        stmts_str = '\n  '.join([str(stmt) for stmt in self.statements])
+        return f"{{\n   {stmts_str}\n}}"
+        
+    
+class FuncCallNode:
+    """Fonksiyon çağrısı node'u."""
+    def __init__(self, node_to_call, arg_nodes):
+        self.node_to_call = node_to_call
+        self.arg_nodes = arg_nodes
+
+    def __repr__(self):
+        args_str = ', '.join([str(arg) for arg in self.arg_nodes])
+        return f"CALL {self.node_to_call}({args_str})"
+
+
+class FuncDefNode:
+    """Fonksiyon tanımlama node'u."""
+    def __init__(self, modifier_tok, func_name_tok, args, body_node):
+        self.modifier_tok = modifier_tok
+        self.func_name_tok = func_name_tok
+        self.args = args
+        self.body_node = body_node
+
+    def __repr__(self):
+        mod_str = f"{self.modifier_tok[1].upper()} " if self.modifier_tok else ""
+        args_str = ', '.join([f"{t[1]} {n[1]}" for t, n in self.args])
+        return f"{mod_str}DEFINE_FUNCTION {self.func_name_tok[1]}({args_str}):\n  {self.body_node}"
+
+
+class ClassDefNode:
+    """Class Tanımlama Node'u."""
+    def __init__(self, class_name_tok, body_node):
+        self.class_name_tok = class_name_tok
+        self.body_node = body_node
+
+    def __repr__(self):
+        return f"DEFINE_CLASS {self.class_name_tok[1]}:\n {self.body_node}"
+        
+
+class ReAssignNode:
+    """Var olan node'a yeni değer ekleme (reassign) node'u."""
+    def __init__(self, var_name_tok, op_tok, value_node):
+        self.var_name_tok = var_name_tok
+        self.op_tok = op_tok
+        self.value_node = value_node
+
+    def __repr__(self):
+        return f"(REASSIGN: {self.var_name_tok[1]} {self.op_tok[1]} {self.value_node})"
+
+
+class TriggerNode:
+    """Hata fırlatma node'u"""
+    def __init__(self, err_value_node):
+        self.err_value_node = err_value_node
+
+    def __repr__(self):
+        return f"TRIGGER_ERROR({self.err_value_node})"
+
+
+class AttemptNode:
+    """Hata yakalama node'u."""
+    def __init__(self, attempt_body, exclude_body, final_body):
+        self.attempt_body = attempt_body
+        self.exclude_body = exclude_body
+        self.final_body = final_body
+
+    def __repr__(self):
+        res = f"ATTEMPT :\n {self.attempt_body}"
+        if self.exclude_body:
+            res += f"\n EXCLUDE :\n {self.exclude_body}"
+        if self.final_body:
+            res += f"\n FINAL :\n {self.final_body}"
+        return res
+
+
+class AllegeNode:
+    """Alleging (Doğrulama) node'u."""
+    def __init__(self, condition):
+        self.condition = condition
+
+    def __repr__(self):
+        return f"ALLEGE : {self.condition}"
+
+
+class SyncUnitNode:
+    """Sync gruplama node'u."""
+    def __init__(self, unit_name_tok, body_node):
+        self.unit_name_tok = unit_name_tok
+        self.body_node = body_node
+
+    def __repr__(self):
+        return f"SYNC_UNIT {self.unit_name_tok[1]}:\n {self.body_node}"
+
+
+class WithNode:
+    """Gruplanmış üniteleri bağlama"""
+    def __init__(self, unit_name_tok, body_node, is_wait=False):
+        self.unit_name_tok = unit_name_tok
+        self.body_node = body_node
+        self.is_wait = is_wait
+
+    def __repr__(self):
+        wait_str = "WAIT " if self.is_wait else ""
+        return f"{wait_str}WITH ({self.unit_name_tok[1]}):\n  {self.body_node}"
+
+
+class ReturnNode:
+    """Geri döndürme (Return) node'u."""
+    def __init__(self, node_to_return):
+        self.node_to_return = node_to_return
+
+    def __repr__(self):
+        return f"RETURN -> {self.node_to_return}"
+
+
+class BreakNode:
+    """Döngü kırma (break) node'u."""
+    def __repr__(self):
+        return "BREAK"
+    
+
+class GoonNode:
+    """Döngüde devam etme node'u."""
+    def __repr__(self):
+        return "GOON"
+
+
+class CastNode:
+    """Tip dönüşümü node'u."""
+    def __init__(self, node, type_tok):
+        self.node = node
+        self.type_tok = type_tok
+
+    def __repr__(self): 
+        return f"TRANSFORM ({self.node} -> {self.type_tok[1]})"
+        
+
+class DeleteNode:
+    """Bellekten temizleme node'u."""
+    def __init__(self, target_node):
+        self.target_node = target_node
+
+    def __repr__(self):
+        return f"DELETE {self.target_node}"
+
+
+class LinkNode:
+    """Dış bağlantı kurma node'u."""
+    def __init__(self, target_str_tok):
+        self.target_str_tok = target_str_tok
+
+    def __repr__(self):
+        return f"LINK: {self.target_str_tok[1]}"
+
+
+class IncludeNode:
+    """Modül içe aktarma node'u."""
+    def __init__(self, module_tok, item_tok=None, alias_tok=None):
+        self.module_tok = module_tok
+        self.item_tok = item_tok
+        self.alias_tok = alias_tok
+
+    def __repr__(self):
+        alias_str = f"AS {self.alias_tok[1]}" if self.alias_tok else ""
+        if self.item_tok:
+            return f"FROM {self.module_tok[1]} INCLUDE {self.item_tok[1]}{alias_str}"
+        return f"INCLUDE {self.module_tok[1]}{alias_str}"
+
+
+class AnFuncNode:
+    """Anonim fonksiyon node'u."""
+    def __init__(self, args, body_node):
+        self.args = args
+        self.body_node = body_node
+
+    def __repr__(self):
+        args_str = ', '.join([f"{t[1]} {n[1]}" for t, n in self.args])
+        return f"ANFUNC ({args_str}):\n  {self.body_node}"
+
+
+class StringNode:
+    """String verilerini tutan node."""
+    def __init__(self, tok):
+        self.tok = tok
+
+    def __repr__(self):
+        return f"STRING({self.tok[1]})"        
+
+
+class IndexAccessNode:
+    """Bellekteki adresten değer okuma node'u."""
+    def __init__(self, left_node, index_node):
+        self.left_node = left_node
+        self.index_node = index_node
+
+
+class IndexAssignNode:
+    """Hafızadaki adrese değer verir."""
+    def __init__(self, left_node, index_node, op_tok, value_node):
+        self.left_node = left_node
+        self.index_node = index_node
+        self.op_tok = op_tok
+        self.value_node = value_node
+
+
+class ClassDefNode:
+    """Sınıf tanımlama şablon Node'u."""
+    def __init__(self, class_name_tok,parent_class_tok, fields, methods):
+        self.class_name_tok =class_name_tok
+        self.parent_class_tok = parent_class_tok
+        self.fields = fields
+        self.methods = methods
+
+
+class MemberAccessNode:
+    """Nesne içindeki değişkene erişim node'u."""
+    def __init__(self, left_node, member_name_tok):
+        self.left_node = left_node
+        self.member_name_tok = member_name_tok
+
+
+class MemberAssignNode:
+    """Nesne içindeki değişkene atama node'u."""
+    def __init__(self, left_node, member_name_tok, op_tok, value_node):
+        self.left_node = left_node
+        self.member_name_tok = member_name_tok
+        self.op_tok = op_tok
+        self.value_node = value_node
+
+
+class NewObjectNode:
+    """Yeni nesne yaratma node'u."""
+    def __init__(self, class_name_tok, arg_nodes):
+        self.class_name_tok = class_name_tok
+        self.arg_nodes = arg_nodes
+
+
+class MethodDefNode:
+    """Sınıf içinde tanımlanan fonksiyon."""
+    def __init__(self, modifier_tok, func_name_tok, args, body_node):
+        self.modifier_tok = modifier_tok
+        self.func_name_tok = func_name_tok    
+        self.args = args
+        self.body_node = body_node
+
+
+class MethodCallNode:
+    """Nesne üzerinden metod çağırma"""
+    def __init__(self, left_node, method_name_tok, arg_nodes):
+        self.left_node = left_node
+        self.method_name_tok = method_name_tok
+        self.arg_nodes = arg_nodes
+
+
+class ArrayLiteralNode:
+    """Array Literal oluşturma node'u."""
+    def __init__(self, elements):
+        self.elements = elements
+        
+
+class SwitchNode:
+    """Switch-Case kontrol node'u."""
+    def __init__(self, switch_expr, cases, default_case):
+        self.switch_expr = switch_expr
+        self.cases = cases
+        self.default_case = default_case
+
+
+class Parser:
+    def __init__(self,tokens):
+        self.tokens = tokens
+        self.tok_idx = -1
+        self.current_tok = None
+        self.advance()
+
+    def advance(self):
+        """Bir sonraki token'a geçiş. (Advancing)"""
+        self.tok_idx += 1
+        if self.tok_idx < len(self.tokens):
+            self.current_tok = self.tokens[self.tok_idx]
+        else:
+            self.current_tok = None
+        return self.current_tok
+    
+    def peek(self):
+        """Mevcut token'ı değiştirmeden peek yapma (Veriyi değiştirmeden inceleme)"""
+        next_idx = self.tok_idx + 1
+        if next_idx < len(self.tokens):
+            return self.tokens[next_idx]
+        return None
+    
+    def throw(self, message):
+        if self.current_tok:
+            line = self.current_tok[2]
+            col = self.current_tok[3]
+            raise Exception(f"{message} (Line: {line}, Column: {col})")
+        else:
+            raise Exception(f"{message} (File end)")
+#Öncelik sırasına göre veri tiplerini ayrıştırma (Düzenlemelerde dikkat et)
+
+    def factor(self):
+        tok = self.current_tok
+        if tok is not None and tok[0] == 'OP_SINGLE' and tok[1] in ('+', '-'):
+            op_tok = self.current_tok
+            self.advance()
+            node = self.factor()
+            if op_tok[1] == '+':
+                return node
+            return UnaryOpNode(op_tok, node)
+ 
+
+        node = self.base_factor()
+
+        while self.current_tok is not None and self.current_tok[0] == 'KEYWORD' and self.current_tok[1] == 'cast':
+            self.advance()
+
+            if self.current_tok is None or self.current_tok[0] not in ('KEYWORD', 'IDENTIFIER'):
+                self.throw("Syntax Error: The data type or class name to be converted must follow the 'cast' command.")
+            
+            type_tok = self.current_tok
+            self.advance()
+            node = CastNode(node, type_tok)
+        
+        return node
+
+    #1. Base Factor
+    def base_factor(self):
+        #print(f"DEBUG: Current token being read: {self.current_tok}") (Benim için yaptıklarını unutmayacağım moruk :)
+        tok = self.current_tok
+        node = None
+
+        if tok[0] in ('INTEGER', 'FLOAT', 'HEX'):
+            self.advance()
+            node = NumberNode(tok)
+
+        elif tok[0] in ('STRING'):
+            self.advance()
+            node = StringNode(tok)
+        
+        elif tok[0] == 'IDENTIFIER' or (tok[0] == 'KEYWORD' and tok[1] == 'this'):
+            self.advance()
+            var_node = VarAccessNode(tok)
+            
+            if self.current_tok is not None and self.current_tok[0] == 'PUNCTUATION' and self.current_tok[1] == '(':
+                self.advance()
+                arg_nodes = []
+
+                if self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != ')':
+                    arg_nodes.append(self.expr())
+
+                    while self.current_tok is not None and self.current_tok[0] == 'PUNCTUATION' and self.current_tok[1] == ',':
+                        self.advance()
+                        arg_nodes.append(self.expr())
+                
+                if self.current_tok is None or self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != ')':
+                    self.throw("Syntax Error: Expected ')'")
+                
+                self.advance()
+                
+                node = FuncCallNode(var_node, arg_nodes)
+            else:
+                node = var_node
+
+            # 2. İndeks/Pointer erişimi mi? (Zincirleme için while döngüsü)
+            while self.current_tok is not None and self.current_tok[0] == 'PUNCTUATION' and self.current_tok[1] in ('[', '.'):
+                
+                if self.current_tok[1] == '[':    
+                    self.advance()
+                    index_node = self.expr()
+
+                    if self.current_tok is None or self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != ']':
+                        self.throw("Syntax Error: Expected ']'")
+                    self.advance()
+                
+                # Zincirleme atama (Örn: dizi[0][1])
+                    node = IndexAccessNode(node, index_node)
+
+                elif self.current_tok[1] == '.':
+                    self.advance()
+                    if self.current_tok[0] != 'IDENTIFIER':
+                        self.throw("Syntax Error: A valid field/method name must follow the period.")
+                    member_name_tok = self.current_tok
+                    self.advance()
+
+                    if self.current_tok is not None and self.current_tok[0] == 'PUNCTUATION' and self.current_tok[1] == '(':
+                        self.advance()
+                        arg_nodes = []
+                        if self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != ')':
+                            arg_nodes.append(self.expr())
+                            while self.current_tok is not None and self.current_tok[0] == 'PUNCTUATION' and self.current_tok[1] == ',':
+                                self.advance()
+                                arg_nodes.append(self.expr())
+
+                        if self.current_tok is None or self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != ')':
+                            self.throw("Syntax Error: Expected ')'")
+                        self.advance()
+
+                        node = MethodCallNode(node, member_name_tok, arg_nodes)
+                    else:
+                        node = MemberAccessNode(node, member_name_tok)
+                
+            return node
+        
+        elif tok[0] == 'KEYWORD' and tok[1] in ('true', 'false', 'null'):
+            self.advance()
+            node = KeywordNode(tok)
+        
+        elif tok[0] == 'PUNCTUATION' and tok[1] == '(':
+            self.advance()
+            expr = self.comp_expr() #parantez içi işlemi çöz
+
+            #Kapatma parantezini kontrol et
+            if self.current_tok is not None and self.current_tok[0] == 'PUNCTUATION' and self.current_tok[1] == ')':
+                self.advance()
+                return expr
+            
+            else:
+                #Hata fırlat
+                self.throw("Syntax Error: Expected ')'")
+            
+        elif tok[0] == 'KEYWORD' and tok[1] == 'limits':
+            self.advance()
+
+            if self.current_tok is None or self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != '(':
+                self.throw("Syntax Error: Expected '(' after 'limits'")
+            self.advance()
+
+            start_node = self.expr()
+
+            if self.current_tok is None or self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != ',':
+                self.throw("Syntax Error: Invalid format (Correct format: limits(start, end))")
+            self.advance()
+
+            end_node = self.expr()
+
+            if self.current_tok is None or self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != ')':
+                self.throw("Syntax Error: 'limits' must be closed with ')'")
+            self.advance()
+
+            node = LimitsNode(start_node, end_node)
+
+        elif tok[0] == 'KEYWORD' and tok[1] == 'anfunc':
+            self.advance()
+            if self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != '(':
+                self.throw("Syntax Error: Expected '(' after 'anfunc'")
+            self.advance()
+            args = []
+            if self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != ')':
+                while True:
+                    arg_type = self.current_tok
+                    self.advance()
+                    arg_name = self.current_tok
+                    self.advance()
+                    args.append((arg_type, arg_name))
+                    if self.current_tok[0] == 'PUNCTUATION' and self.current_tok[1] == ',':
+                        self.advance()
+                    else:
+                        break
+            self.advance()
+            node = AnFuncNode(args, self.block())
+
+        elif tok[0] == 'KEYWORD' and tok[1] == 'new':
+            self.advance()
+            if self.current_tok[0] != 'IDENTIFIER':
+                self.throw("Syntax Error: Expected class name after 'new'")
+            class_name_tok = self.current_tok
+            self.advance()
+
+            if self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != '(':
+                self.throw("Syntax Error: Expected '(' after Class")
+            self.advance()
+
+            arg_nodes = []
+            if self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != ')':
+                arg_nodes.append(self.expr())
+                while self.current_tok is not None and self.current_tok[0] == 'PUNCTUATION' and self.current_tok[1] == ',':
+                    self.advance()
+                    arg_nodes.append(self.expr())
+
+            if self.current_tok is None or self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != ')':
+                self.throw("Syntax Error: 'new' call must be closed with ')'")
+            self.advance()
+
+            return NewObjectNode(class_name_tok, arg_nodes)
+
+        elif tok[0] == 'PUNCTUATION' and tok[1] == '(':
+            self.advance()
+            node = self.expr()
+            self.advance()
+
+        elif tok[0] == 'PUNCTUATION' and tok[1] == '[':
+            self.advance()
+
+            elements = []
+            if self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != ']':
+                elements.append(self.expr())
+
+                while self.current_tok is not None and self.current_tok[0] == 'PUNCTUATION' and self.current_tok[1] == ',':
+                    self.advance()
+                    elements.append(self.expr())
+
+            if self.current_tok is None or self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != ']':
+                self.throw("Syntax Error: Array must be closed with ']'")
+            self.advance()
+
+            node = ArrayLiteralNode(elements)
+
+        if node is None:
+            self.throw(f"Syntax Error: Unexpected token: '{tok[1]}'")
+              
+        return node
+
+
+    #2. Çarpma, Bölme, Mod ve Üs Alma
+    def term(self):
+        left = self.factor() #Önce solu al
+
+        while self.current_tok is not None and self.current_tok[0] == 'OP_SINGLE' and self.current_tok[1] in ('*', '/', '%', '^'):
+            op_tok = self.current_tok
+            self.advance()
+            right = self.factor()
+            left = BinOpNode(left, op_tok, right)
+
+        return left
+    
+    #3. Toplama ve Çıkarma
+    def expr(self):
+        left = self.term()
+
+        while self.current_tok is not None and self.current_tok[0] == 'OP_SINGLE' and self.current_tok[1] in ('+', '-'):
+            op_tok = self.current_tok
+            self.advance()
+            right = self.term()
+            left = BinOpNode(left, op_tok, right)
+
+        return left
+    
+    #3.5 Karşılaştırma ve Mantık İfadeleri
+    def rel_expr(self):
+        left = self.expr()
+
+        while self.current_tok is not None and self.current_tok[0] == 'OP_MULTI':
+            op_tok = self.current_tok
+            self.advance()
+            right = self.expr()
+            left = BinOpNode(left, op_tok, right)
+
+        return left
+
+    def comp_expr(self):
+
+        if self.current_tok is not None and self.current_tok[0] == 'KEYWORD' and self.current_tok[1] in ('not', 'await', 'wait'):
+            op_tok = self.current_tok
+            self.advance()
+            node = self.comp_expr()
+            return UnaryOpNode(op_tok, node)
+
+        if self.current_tok is not None and self.current_tok[0] == 'KEYWORD' and self.current_tok[1] == 'is':
+            self.advance()
+            left = self.rel_expr()
+
+            if self.current_tok is None or self.current_tok[0] != 'KEYWORD' or self.current_tok[1] != 'same':
+                self.throw("Syntax Error: Expected 'same' after 'is'")
+
+            op_tok = self.current_tok
+            self.advance()
+            right = self.rel_expr()
+            return BinOpNode(left, op_tok, right)
+
+        left = self.rel_expr()
+
+        while self.current_tok is not None and (
+            self.current_tok[0] == 'OP_MULTI' or
+            (self.current_tok[0] == 'KEYWORD' and self.current_tok[1] in ('and', 'or', 'nand', 'nor', 'xor', 'xnor', 'in', 'is'))
+        ):
+            op_tok = self.current_tok
+            self.advance()
+            right = self.rel_expr()
+            left = BinOpNode(left, op_tok, right)
+
+        return left
+    
+    #4. İfadeler ve Atamalar (Statement)
+    def statement(self):
+
+        # Durum 1: Class
+        if self.current_tok is not None and self.current_tok[0] == 'KEYWORD' and self.current_tok[1] == 'class':
+            self.advance()
+            if self.current_tok[0] != 'IDENTIFIER':
+                self.throw("Syntax Error: Undefined Class")
+            class_name = self.current_tok
+            self.advance()
+
+            parent_class = None
+            if self.current_tok is not None and self.current_tok[0] == 'KEYWORD' and self.current_tok[1] == 'extends':
+                self.advance()
+                if self.current_tok is None or self.current_tok[0] != 'IDENTIFIER':
+                    self.throw("Syntax Error: Undefined Class after 'extends'")
+                parent_class = self.current_tok
+                self.advance()
+
+            if self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != '{':
+                self.throw("Syntax Error: Expected '{' after Class")
+            self.advance()
+            
+            fields = []
+            methods = []
+            while not (self.current_tok[0] == 'PUNCTUATION' and self.current_tok[1] == '}'):
+                
+                modifier_tok = None
+                if self.current_tok[0] == 'KEYWORD' and self.current_tok[1] in ('public', 'private'):
+                    modifier_tok = self.current_tok
+                    self.advance()
+
+                if self.current_tok[0] == 'KEYWORD' and self.current_tok[1] == 'define':
+                    self.advance()
+
+                    if self.current_tok[0] != 'IDENTIFIER':
+                        self.throw("Syntax Error: Undefined Method")
+                    func_name_tok = self.current_tok
+                    self.advance()
+
+                    if self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != '(':
+                        self.throw("Syntax Error: Expected '(' after Method")
+                    self.advance()
+
+                    args = []
+                    if self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != ')':
+                        if self.current_tok[0] not in ('KEYWORD', 'IDENTIFIER'):
+                            self.throw("Syntax Error: Undefined Parameter")
+                        arg_type = self.current_tok
+                        self.advance()
+
+                        if self.current_tok[0] != 'IDENTIFIER':
+                            self.throw("Syntax Error: Expected Parameter Name after Parameter")
+                        arg_name = self.current_tok
+                        self.advance()
+                        args.append((arg_type, arg_name))
+
+                        while self.current_tok is not None and self.current_tok[0] == 'PUNCTUATION' and self.current_tok[1] == ',':
+                            self.advance()
+                            arg_type = self.current_tok
+                            self.advance()
+                            arg_name = self.current_tok
+                            self.advance()
+                            args.append((arg_type, arg_name))
+
+                    if self.current_tok is None or self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != ')':
+                        self.throw("Syntax Error: Expected ')' after Method Parameter")
+                    self.advance()
+
+                    body_node = self.statement()
+                    methods.append(MethodDefNode(modifier_tok, func_name_tok, args, body_node))
+                
+                else:
+                    if self.current_tok[0] not in ('KEYWORD', 'IDENTIFIER'): 
+                        self.throw("Syntax Error: Expected Variable Type or 'define'")
+                    type_tok = self.current_tok
+                    self.advance()
+                    
+                    if self.current_tok[0] != 'IDENTIFIER':
+                        self.throw("Syntax Error: Expected Variable Name")
+                    name_tok = self.current_tok
+                    self.advance()
+                    
+                    if self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != ';':
+                        self.throw("Syntax Error: Expected ';' after Class Definition")
+                    self.advance()
+                    
+                    fields.append((modifier_tok, type_tok, name_tok))
+            
+            self.advance()
+            return ClassDefNode(class_name, parent_class, fields, methods)
+
+        # Durum 2: Kod Bloğu {}
+        if self.current_tok is not None and self.current_tok[0] == 'PUNCTUATION' and self.current_tok[1] == '{':
+            return self.block()
+
+        # Durum 3: IF / BUTIF / ELSE
+        if self.current_tok is not None and self.current_tok[0] == 'KEYWORD' and self.current_tok[1] == 'if':
+            self.advance()
+
+            condition = self.comp_expr()
+            
+            if self.current_tok is None or self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != '{':
+                self.throw("Syntax Error: Expected '{' after 'if'")
+            block_node = self.block()
+
+            cases = [(condition, block_node)]
+            else_case = None
+
+            #BUTIF zinciri
+            while self.current_tok is not None and self.current_tok[0] == 'KEYWORD' and self.current_tok[1] == 'butif':
+                self.advance()
+                cond = self.comp_expr()
+                if self.current_tok is None or self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != '{':
+                    self.throw("Syntax Error: Expected '{' after 'butif'")
+                cases.append((cond, self.block()))
+
+            #ELSE bloğu
+            if self.current_tok is not None and self.current_tok[0] == 'KEYWORD' and self.current_tok[1] == 'else':
+                self.advance()
+                if self.current_tok is None or self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != '{':
+                    self.throw("Syntax Error: Expected '{' after 'else'")
+                else_case = self.block()
+
+            return IfNode(cases, else_case)
+        
+        # Durum 4: WHILE
+        if self.current_tok is not None and self.current_tok[0] == 'KEYWORD' and self.current_tok[1] == 'while':
+            self.advance()
+            condition = self.comp_expr()
+
+            if self.current_tok is None or self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != '{':
+                self.throw("Syntax Error: Expected '{' after 'while'")
+            
+            return WhileNode(condition, self.block())
+
+        # Durum 5: FOR    
+        if self.current_tok is not None and self.current_tok[0] == 'KEYWORD' and self.current_tok[1] == 'for':
+            self.advance()
+
+            if self.current_tok is None or self.current_tok[0] != 'IDENTIFIER':
+                self.throw("Syntax Error: Undefined Variable Name in 'for'")
+            var_name_tok = self.current_tok
+            self.advance()
+
+            if self.current_tok is None or self.current_tok[0] != 'KEYWORD' or self.current_tok[1] != 'in':
+                self.throw("Syntax Error: Expected 'in' after Variable Name")
+            self.advance()
+
+            iterable_node = self.expr()
+
+            if self.current_tok is None or self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != '{':
+              self.throw("Syntax Error: Expected '{' after 'for'")  
+            
+            return ForNode(var_name_tok, iterable_node, self.block())
+        
+        # Durum 6: TRIGGER
+        if self.current_tok is not None and self.current_tok[0] == 'KEYWORD' and self.current_tok[1] == 'trigger':
+            self.advance() 
+            
+            err_node = self.expr() 
+            
+            if self.current_tok is None or self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != ';':
+                self.throw("Syntax Error: Expected ';' after 'trigger'")
+            self.advance() 
+            
+            return TriggerNode(err_node)
+
+        # Durum 7: SWITCH/CASE
+        if self.current_tok is not None and self.current_tok[0] == 'KEYWORD' and self.current_tok[1] == 'switch':
+            self.advance()
+            
+            if self.current_tok is None or self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != '(':
+                self.throw("Syntax Error: Expected '(' after 'switch'")
+            self.advance()
+            
+            switch_expr = self.comp_expr()
+            
+            if self.current_tok is None or self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != ')':
+                self.throw("Syntax Error: Expected ')' after 'switch'")
+            self.advance()
+            
+            if self.current_tok is None or self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != '{':
+                self.throw("Syntax Error: Expected '{' after 'switch'")
+            self.advance()
+            
+            cases = []
+            default_case = None
+            
+            while self.current_tok is not None and not (self.current_tok[0] == 'PUNCTUATION' and self.current_tok[1] == '}'):
+                if self.current_tok[0] == 'KEYWORD' and self.current_tok[1] == 'case':
+                    self.advance()
+                    case_expr = self.comp_expr()
+                    
+                    if self.current_tok is None or self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != ':':
+                        self.throw("Syntax Error: Expected ':' after 'case' ")
+                    self.advance()
+                    
+                    # Case içindeki satırları diğer case'e veya }'e kadar oku
+                    statements = []
+                    while self.current_tok is not None and not (self.current_tok[0] == 'KEYWORD' and self.current_tok[1] in ('case', 'default')) and not (self.current_tok[0] == 'PUNCTUATION' and self.current_tok[1] == '}'):
+                        statements.append(self.statement())
+                        
+                    cases.append((case_expr, BlockNode(statements)))
+                    
+                elif self.current_tok[0] == 'KEYWORD' and self.current_tok[1] == 'default':
+                    self.advance()
+                    if self.current_tok is None or self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != ':':
+                        self.throw("Syntax Error: Expected ':' after 'default'")
+                    self.advance()
+                    
+                    statements = []
+                    while self.current_tok is not None and not (self.current_tok[0] == 'KEYWORD' and self.current_tok[1] in ('case', 'default')) and not (self.current_tok[0] == 'PUNCTUATION' and self.current_tok[1] == '}'):
+                        statements.append(self.statement())
+                        
+                    default_case = BlockNode(statements)
+                else:
+                    self.throw("Syntax Error: Unssupported module type in 'switch' (Supported : 'default', 'case')")
+                    
+            self.advance() # '}' parantezini geç
+            return SwitchNode(switch_expr, cases, default_case)
+
+        # Durum 8: WHEN
+        if self.current_tok is not None and self.current_tok[0] == 'KEYWORD' and self.current_tok[1] in ('when', 'global'):
+            is_global = False
+
+            #ISGLOBAL
+            if self.current_tok[1] == 'global':
+                is_global = True
+                self.advance()
+                if self.current_tok is None or self.current_tok[0] != 'KEYWORD' or self.current_tok[1] != 'when':
+                    self.throw("Syntax Error: Expected 'when' after 'global'")
+                
+            self.advance()
+            condition = self.comp_expr()
+
+            if self.current_tok is None or self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != '{':
+                self.throw("Syntax Error: Expected '{' after 'when''")
+            
+            return WhenNode(condition, self.block(), is_global)
+        
+        # Durum 9: VARASSIGN
+        # ACCESS MODIFIER
+        modifier_tok = None
+        if self.current_tok is not None and self.current_tok[0] == 'KEYWORD' and self.current_tok[1] in ('public', 'private'):
+            modifier_tok = self.current_tok
+            self.advance()
+        # VARIABLE TYPES
+        if self.current_tok is not None and (
+            (self.current_tok[0] == 'KEYWORD' and self.current_tok[1] in ('int', 'integer', 'double', 'char', 'str', 'string', 'bool', 'var')) or
+            (self.current_tok[0] == 'IDENTIFIER' and self.peek() is not None and self.peek()[0] == 'IDENTIFIER')
+        ):
+            type_tok = self.current_tok
+            self.advance()
+
+            if self.current_tok is None or self.current_tok[0] != 'IDENTIFIER':
+                self.throw("Syntax Error: Variable Name Unassigned")
+            var_name_tok = self.current_tok
+            self.advance()
+
+            if self.current_tok is None or self.current_tok[0] != 'OP_SINGLE' or self.current_tok[1] != '=':
+                self.throw(f"Syntax Error: Expected '=' after '{var_name_tok[1]}' ")
+            self.advance()
+
+            expr_node = self.comp_expr()
+
+            if self.current_tok is None or self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != ';':
+                self.throw("Syntax Error: Expected ';'")
+            self.advance()
+
+            return VarAssignNode(modifier_tok, type_tok, var_name_tok, expr_node)
+        
+        # Durum 10: DEFINE FUNCTION
+        #FUNCTION SYNCHRONIZATION MODIFIERS
+        func_modifier = None
+        if self.current_tok is not None and self.current_tok[0] == 'KEYWORD' and self.current_tok[1] in ('async', 'sync', 'extern'):
+            next_tok = self.peek()
+            if next_tok is not None and next_tok[0] == 'KEYWORD' and next_tok[1] == 'define':
+                func_modifier = self.current_tok
+                self.advance()
+
+        if self.current_tok is not None and self.current_tok[0] == 'KEYWORD' and self.current_tok[1] == 'define':
+            self.advance()
+
+            if self.current_tok is None or self.current_tok[0] != 'IDENTIFIER':
+                self.throw("Syntax Error: Expected Function Name after 'define'")
+            func_name_tok = self.current_tok
+            self.advance()
+            
+            if self.current_tok is None or self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != '(':
+                self.throw("Syntax Error: Expected '(' after Function Name")
+            self.advance()
+
+            args = []
+            if self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != ')':
+                while True:
+                    if self.current_tok is None or self.current_tok[0] not in ('KEYWORD', 'IDENTIFIER'):
+                        self.throw("Syntax Error: Parameter Data Type Unspecified")
+                    arg_type = self.current_tok
+                    self.advance()
+
+                    if self.current_tok is None or self.current_tok[0] != 'IDENTIFIER':
+                        self.throw("Syntax Error: Expected Variable Name after Parameter Type")
+                    arg_name = self.current_tok
+                    self.advance()
+
+                    args.append((arg_type, arg_name))
+
+                    if self.current_tok[0] == 'PUNCTUATION' and self.current_tok[1] == ',':
+                        self.advance()
+                    else:
+                        break
+
+            if self.current_tok is None or self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != ')':
+                self.throw("Syntax Error: Expected ')' after Function Parameter")
+            self.advance()
+
+            if func_modifier and func_modifier[1] == 'extern':
+                if self.current_tok is None or self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != ';':
+                    self.throw("Syntax Error: 'extern' function definitions must end with ';'")
+                self.advance()
+                return FuncDefNode(func_modifier, func_name_tok, args, None)
+
+            if self.current_tok is None or self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != '{':
+                self.throw("Syntax Error: Expected '{' in Function Definition")
+            
+            return FuncDefNode(func_modifier, func_name_tok, args, self.block())
+
+        # Durum 11: DEFINE CLASS
+        if self.current_tok is not None and self.current_tok[0] == 'KEYWORD' and self.current_tok[1] == 'class':
+            self.advance()
+
+            if self.current_tok is None or self.current_tok[0] != 'IDENTIFIER':
+                self.throw("Syntax Error: Expected Class Name after 'class'")
+            class_name_tok = self.current_tok
+            self.advance()
+
+            if self.current_tok is None or self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != '{':
+                self.throw("Syntax Error: Expected '{' in Class Definiton")
+            
+            return ClassDefNode(class_name_tok, self.block())
+
+        # Durum 12: ALLEGE
+        if self.current_tok is not None and self.current_tok[0] == 'KEYWORD' and self.current_tok[1] == 'allege':
+            self.advance()
+
+            condition = self.comp_expr()
+
+            if self.current_tok is None or self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != ';':
+                self.throw("Syntax Error: Expected ';' after 'allege'")
+            self.advance()
+
+            return AllegeNode(condition)
+
+        # Durum 13: ATTEMPT/EXCLUDE/FINAL
+        if self.current_tok is not None and self.current_tok[0] == 'KEYWORD' and self.current_tok[1] == 'attempt':
+            self.advance()
+
+            if self.current_tok is None or self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != '{':
+                self.throw("Syntax Error: Expected '{' after 'attempt'")
+            attempt_body = self.block()
+
+            exclude_body = None
+            final_body = None
+
+            #EXCLUDE
+            if self.current_tok is not None and self.current_tok[0] == 'KEYWORD' and self.current_tok[1] == 'exclude':
+                self.advance()
+                if self.current_tok is None or self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != '{':
+                    self.throw("Syntax Error: Expected '{' after 'exclude'")
+                exclude_body = self.block()
+
+            #FINAL
+            if self.current_tok is not None and self.current_tok[0] == 'KEYWORD' and self.current_tok[1] == 'final':
+                self.advance()
+                if self.current_tok is None or self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != '{':
+                    self.throw("Syntax Error: Expected '{' after 'final'")
+                final_body = self.block()
+
+            if exclude_body is None and final_body is None:
+                self.throw("Syntax Error: Expected 'final' or 'exclude' after 'attempt'")
+            
+            return AttemptNode(attempt_body, exclude_body, final_body)
+
+        # Durum 14: SYNC UNIT
+        if self.current_tok is not None and self.current_tok[0] == 'KEYWORD' and self.current_tok[1] == 'sync':
+            next_tok = self.peek()
+            if next_tok is not None and next_tok[0] == 'KEYWORD' and next_tok[1] == 'unit':
+                self.advance() 
+                self.advance()
+
+                if self.current_tok is None or self.current_tok[0] != 'IDENTIFIER':
+                    self.throw("Syntax Error: Expected Unit Name after 'sync unit'")
+                unit_name_tok = self.current_tok
+                self.advance()
+
+                if self.current_tok is None or self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != '{':
+                    self.throw("Syntax Error: Expected '{' in Unit Definition")
+                    
+                return SyncUnitNode(unit_name_tok, self.block())
+            
+        # Durum 15: WITH
+        #WAIT MODIFIER
+        is_wait = False
+        if self.current_tok is not None and self.current_tok[0] == 'KEYWORD' and self.current_tok[1] == 'wait':
+            next_tok = self.peek()
+
+            if next_tok is not None and next_tok[0] == 'KEYWORD' and next_tok[1] == 'with':
+                is_wait = True
+                self.advance()
+        if self.current_tok is not None and self.current_tok[0] == 'KEYWORD' and self.current_tok[1] == 'with':
+            self.advance() 
+            
+            if self.current_tok is None or self.current_tok[0] != 'IDENTIFIER':
+                self.throw("Syntax Error: Expected Unit Name after'with'")
+            unit_name_tok = self.current_tok
+            self.advance()
+            
+            if self.current_tok is None or self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != '{':
+                self.throw("Syntax Error: Expected '{' after 'with'")
+                
+            return WithNode(unit_name_tok, self.block())
+            
+        # Durum 16: RETURN
+        if self.current_tok is not None and self.current_tok[0] == 'KEYWORD' and self.current_tok[1] == 'return':
+            self.advance()
+
+            if self.current_tok is not None and self.current_tok[0] == 'PUNCTUATION' and self.current_tok[1] == ';':
+                self.advance()
+                return ReturnNode(None)
+            
+            expr_node = self.comp_expr()
+
+            if self.current_tok is None or self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != ';':
+                self.throw("Syntax Error: Expected ';' after 'return'")
+            self.advance()
+
+            return ReturnNode(expr_node)
+
+        # Durum 17: BREAK/GOON
+        if self.current_tok is not None and self.current_tok[0] == 'KEYWORD' and self.current_tok[1] in ('break', 'goon'):
+            tok_val = self.current_tok[1]
+            self.advance()
+
+            if self.current_tok is None or self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != ';':
+                self.throw(f"Syntax Error: Expected ';' after'{tok_val}'")
+            self.advance()
+
+            return BreakNode() if tok_val == 'break' else GoonNode()
+
+        # Durum 18: DELETE
+        if self.current_tok is not None and self.current_tok[0] == 'KEYWORD' and self.current_tok[1] == 'delete':
+            self.advance()
+            target_node = self.expr()
+            if self.current_tok is None or self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != ';':
+                self.throw("Syntax Error: Expected ';' after 'delete'")
+            self.advance()
+            return DeleteNode(target_node)
+
+        # Durum 19: LINK
+        if self.current_tok is not None and self.current_tok[0] == 'KEYWORD' and self.current_tok[1] == 'link':
+            self.advance()
+            if self.current_tok is None or self.current_tok[0] != 'STRING':
+                self.throw("Syntax Error: Expected File Path (\".\") after 'link' ")
+            target_tok = self.current_tok
+            self.advance()
+            if self.current_tok is None or self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != ';':
+                self.throw("Syntax Error: Expected ';' after 'link'")
+            self.advance()
+            
+            return LinkNode(target_tok)
+ 
+        # Durum 20: INCLUDE/FROM
+        if self.current_tok is not None and self.current_tok[0] == 'KEYWORD' and self.current_tok[1] in ('include', 'from'):
+            is_from = False
+            item_tok = None
+
+            if self.current_tok[1] == 'from':
+                is_from = True
+                self.advance()
+                module_tok = self.current_tok
+                self.advance()
+                self.advance()
+                item_tok = self.current_tok
+                self.advance()
+            else:
+                self.advance()
+                module_tok = self.current_tok
+                self.advance()
+
+            alias_tok = None
+            if self.current_tok is not None and self.current_tok[0] == 'KEYWORD' and self.current_tok[1] == 'as':
+                self.advance()
+                if self.current_tok is None or self.current_tok[0] != 'IDENTIFIER':
+                    self.throw("Syntax Error: Expected Alias after 'as'")
+                alias_tok = self.current_tok
+                self.advance()
+ 
+            if self.current_tok is None or self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != ';':
+                self.throw("Syntax Error: Expected ';' after 'as'")
+            self.advance()
+
+            return IncludeNode(module_tok, item_tok, alias_tok)
+
+                # Durum 9: OPERATION/REASSIGN
+        
+        # Durum 21:
+        expr_node = self.comp_expr()
+
+        if self.current_tok is not None and (
+            (self.current_tok[0] == 'OP_SINGLE' and self.current_tok[1] == '=') or
+            self.current_tok[0] == 'OP_ASSIGN'
+        ):
+            op_tok = self.current_tok
+            self.advance()
+            value_node = self.comp_expr()
+
+            if isinstance(expr_node, VarAccessNode):
+                expr_node = ReAssignNode(expr_node.var_name_tok, op_tok, value_node)
+
+            elif isinstance(expr_node, IndexAccessNode):
+                expr_node = IndexAssignNode(expr_node.left_node, expr_node.index_node, op_tok, value_node)
+            
+            elif isinstance(expr_node, MemberAccessNode):
+                expr_node = MemberAssignNode(expr_node.left_node, expr_node.member_name_tok, op_tok, value_node)
+
+            else: self.throw("Syntax Error: Assignment can only be made to variables or array/pointer indices.")
+
+        if self.current_tok is None or self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != ';':
+            self.throw("Syntax Error: Expected ';' after Expression")
+        self.advance()
+
+        return expr_node 
+
+    #5. Kod blokları { }
+    def block(self):
+        # { ile başlanması gerekir.
+        if self.current_tok is None or self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != '{':
+            self.throw("Syntax Error: Expected '{' after Block" )
+        self.advance()
+
+        statements = []
+
+        #Dosya bitene kadar ya da } görülene kadar statement'ları oku.
+
+        while self.current_tok is not None and not (self.current_tok[0] == 'PUNCTUATION' and self.current_tok[1] == '}'):
+            statements.append(self.statement())
+
+        if self.current_tok is None or self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != '}':
+            self.throw("Syntax Error: Expected '}'")
+        self.advance()
+
+        return BlockNode(statements)
+
+
+    #Parse et
+    def parse(self):
+        statements = []
+        while self.current_tok is not None:
+            statements.append(self.statement())
+        return statements
+
+
+
+#Test kısmı
+
+if __name__ == '__main__':
+    from lexer import tokenize
+    test_code = """
+    // --- 1. OOP, INHERITANCE, UPCAST/DOWNCAST TESTI ---
+    class Karakter {
+        int can;
+    }
+    
+    class Oyuncu extends Karakter {
+        int seviye;
+    }
+    
+    var asil_oyuncu = new Oyuncu();
+    asil_oyuncu.can = 100;
+    asil_oyuncu.seviye = 25;
+    
+    Karakter npc = asil_oyuncu; // UPCAST
+    var donusen_oyuncu = npc cast Oyuncu; // DOWNCAST
+    
+    print("Downcast Sonrasi Oyuncu Seviyesi: ");
+    print_int(donusen_oyuncu.seviye); // 25 yazdırmalı
+    print("\\n");
+    free(asil_oyuncu);
+
+
+    // --- 2. STRING KIYASLAMA VE KARAKTER (CHAR) INDEXLEME TESTI ---
+    var metin1 = "Wrench";
+    var metin2 = "Wrench";
+    var metin3 = "Zebra";
+    
+    if (metin1 =? metin2) {
+        print("Metin1 ve Metin2 Ayni! (strcmp calisiyor)\\n");
+    }
+    
+    if (metin3 > metin1) {
+        print("Zebra alfabetik olarak Wrench'ten buyuktur!\\n");
+    }
+    
+    // Karakter değiştirme: "Zebra" -> "Cobra"
+    metin3[0] = "C" cast char;
+    metin3[1] = "o" cast char;
+    
+    print("Modifiye Edilmis String: ");
+    print(metin3); // Cobra yazdırmalı
+    print("\\n");
+    """
+    
+    tokens = tokenize(test_code)
+    parser = Parser(tokens)
+    ast = parser.parse()
+    
+    print("Parser Çıktısı (AST Ağacı):")
+    for node in ast:
+        print(node) 

@@ -1,0 +1,158 @@
+/# WRENCH STANDARD LIBRARY
+    std/time.wr
+    Time Library
+#/
+define now() {
+    var tp = alloc(16);
+    syscall(228, 0 ,tp);
+    var sec = tp[0];
+    free(tp);
+    return sec;
+}
+
+define now_ms() {
+    var tp = alloc(16);
+    syscall(228, 0 ,tp);
+    var ms = (tp[0] * 1000) + (tp[1] / 1000000);
+    free(tp);
+    return ms;
+}
+
+define ticks() {
+    var tp = alloc(16);
+    syscall(228, 1, tp);
+    var ms = (tp[0] * 1000) + (tp[1] / 1000000);
+    free(tp);
+    return ms;
+}
+
+define sleep(int ms) {
+    var req = alloc(16);
+    var sec = ms / 1000;
+    var nano = (ms % 1000) * 1000000;
+
+    req[0] = sec;
+    req[1] = nano;
+
+    syscall(35, req, 0);
+    free(req);
+}
+
+define measure(var func_ptr) {
+    var start = ticks();
+    func_ptr();
+    var end = ticks();
+    return end - start; 
+}
+
+define is_leap_year(int y) {
+    if ((y % 400) =? 0) {
+        return true;
+    }
+    butif ((y % 100) =? 0) {
+        return false;
+    }
+    butif ((y % 4) =? 0) {
+        return true;
+    }
+    return false;
+}
+
+define epoch_to_utc(int epoch) {
+    var sec = epoch % 60;
+    var total_min = epoch / 60;
+    var min = total_min % 60;
+    var total_hr = total_min / 60;
+    var hr = total_hr % 24;
+    var days = total_hr / 24;
+
+    var year = 1970;
+    while (true) {
+        var days_in_year = 365;
+        if (is_leap_year(year)) {
+            days_in_year = 366;
+        }
+        if (days < days_in_year) {
+            break;
+        }
+        days -= days_in_year;
+        year += 1;
+    }
+
+    var month = 1;
+    while (month <= 12) {
+        var dim = 31;
+        if (month =? 4)  { dim = 30; }
+        butif (month =? 6)  { dim = 30; }
+        butif (month =? 9)  { dim = 30; }
+        butif (month =? 11) { dim = 30; }
+        butif (month =? 2)  {
+            if (is_leap_year(year)) {
+                dim = 29;
+            } else {
+                dim = 28;
+            }
+        }
+
+        if (days < dim) {
+            break;
+        }
+        days -= dim;
+        month += 1;
+    }
+
+    var day = days + 1;
+
+    return [year, month, day, hr, min, sec];
+}
+
+define now_utc() {
+    return epoch_to_utc(now());
+}
+
+// FOLLOWING CODELINES ARE FOR TESTING.
+// ----------------------------------------
+/# 
+include "std/time.wr";
+
+print("--- EPOCH AND UTC TIME TEST ---\n");
+var ep = now();
+print("Current Epoch Second: ");
+print(ep);
+print("\n");
+
+var utc = now_utc();
+print("UTC Date / Time: ");
+print(utc[0]); print("-"); 
+print(utc[1]); print("-"); 
+print(utc[2]); print(" "); 
+print(utc[3]); print(":"); 
+print(utc[4]); print(":"); 
+print(utc[5]); print("\n\n");
+
+print("--- SLEEP TEST ---\n");
+var t1 = ticks();
+print("Waiting 1000 ms (1 second)...\n");
+sleep(1000);
+var t2 = ticks();
+
+var gecen = t2 - t1;
+print("Time passed (ms): ");
+print(gecen); // 1000 ms civarında olmalı
+print("\n\n");
+
+print("--- BENCHMARK (MEASURE) TEST ---\n");
+var agir_islem = anfunc() {
+    var i = 0;
+    var toplam = 0;
+    while (i < 5000000) {
+        toplam += i;
+        i += 1;
+    }
+};
+
+var sure = measure(agir_islem);
+print("5 Million Loop Runtime (ms): ");
+print(sure);
+print("\n\n--- TEST COMPLETE ---\n");
+#/

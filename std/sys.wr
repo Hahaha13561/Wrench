@@ -1,0 +1,82 @@
+/# WRENCH STANDARD LIBRARY
+    std/sys.wr
+    System Library
+#/
+include "collections.wr";
+
+define args() {
+    var args_list = new List();
+    var argc = sys_argc();
+    var i = 0;
+
+    while (i < argc) {
+        args_list.push(sys_argv(i) cast str);
+        i += 1;
+    }
+
+    return args_list;
+}
+
+define execute(str program, List cmd_args) {
+    var pid = syscall(57) cast int;
+
+    if (pid =? 0) {
+        var len = cmd_args.length;
+
+        var argv_ptr = alloc((len+1) * 8);
+
+        var i = 0;
+
+        while (i < len) {
+            var str_ptr = cmd_args.get(i) cast int;
+            var offset  = i * 8;
+            set_mem(argv_ptr, offset, str_ptr);
+            i += 1;
+        }
+
+        var null_offset = len * 8;
+        set_mem(argv_ptr, null_offset, 0);
+
+        syscall(59, program, argv_ptr, 0);
+
+        print("Execve Error: Failed to execute process\n");
+        exit(1);
+    }
+    else {
+        syscall(61, pid, 0, 0, 0);
+    }
+    return 0;
+}
+
+// FOLLOWING CODELINES ARE FOR TESTING.
+// ----------------------------------------
+/# 
+include "std/sys.wr";
+
+print("--- SYS LIBRARY TEST ---\n\n");
+
+List arguments = args();
+var count = arguments.length;
+
+print("Total Arguments Given: ");
+print_int(count);
+print("\n");
+
+var i = 0;
+while (i < count) {
+    print("Arg: ");
+    print(arguments.get(i) cast str);
+    print("\n");
+    i += 1;
+}
+
+print("\n[*] Spawning child process with execute()...\n");
+
+var child_args = new List();
+child_args.push("/bin/echo"); 
+child_args.push("Hello from the Child Process!");
+
+execute("/bin/echo", child_args);
+
+print("[*] Child process finished successfully. Parent is exiting...\n");
+#/

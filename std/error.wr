@@ -1,0 +1,592 @@
+/# WRENCH STANDARD LIBRARY
+   std/error.wr
+   Hierarchical Exception and Error Handling Library
+#/
+class BaseException {
+    str message;
+    var code;
+
+    define init(str msg, int err_code) {
+        this.message = msg;
+        this.code = err_code;
+    }
+
+    define print_err() {
+        print("[ERROR "); print(this.code); print("]: ");
+        print(this.message); print("\n");
+    }
+}
+
+    class Exception extends BaseException {
+    define init(str msg, int err_code) {
+        this.message = msg;
+        this.code = err_code;
+    }
+}
+        class ArithmeticError extends Exception {
+            define init(str msg, int err_code) {
+                this.message = msg;
+                this.code = err_code;
+            }
+        }
+            class ZeroDivisionError extends ArithmeticError {
+                define init(str msg) {
+                    this.message = msg;
+                    this.code = 80; // FPE_INTDIV
+                }
+            }
+
+            class OverflowError extends ArithmeticError {
+                define init(str msg) {
+                    this.message = msg;
+                    this.code = 75; // EOVERFLOW
+                }
+            }
+
+            class FloatingPointError extends ArithmeticError {
+                define init(str msg) {
+                    this.message = msg;
+                    this.code = 8; // SIGFPE
+                }
+            }
+        class LookupError extends Exception {
+            define init(str msg, int err_code) {
+                this.message = msg;
+                this.code = err_code;
+            }
+        }
+            class IndexError extends LookupError {
+                define init(str msg) {
+                    this.message = msg;
+                    this.code = 99;
+                }
+            }
+
+            class KeyError extends LookupError {
+                define init(str msg) {
+                    this.message = msg;
+                    this.code = 100;
+                }
+            }
+
+        class NameError extends Exception {
+            define init(str msg, int err_code) {
+                this.message = msg;
+                this.code = err_code;
+            }
+        }
+            class UnboundLocalError extends NameError {
+                define init(str msg) {
+                    this.message = msg;
+                    this.code = 101;
+                }
+            }
+        class ValueError extends Exception {
+            define init(str msg, int err_code) {
+                this.message = msg;
+                this.code = err_code;
+            }
+        }
+            class UnicodeError extends ValueError {
+                define init(str msg, int err_code) {
+                    this.message = msg;
+                    this.code = err_code;
+                }
+            }
+                class UnicodeEncodeError extends UnicodeError {
+                    define init(str msg) {
+                        this.message = msg;
+                        this.code = 85;
+                    }
+                }
+                class UnicodeDecodeError extends UnicodeError {
+                    define init(str msg) {
+                        this.message = msg;
+                        this.code = 86;
+                    }
+                }
+                class UnicodeTranslateError extends UnicodeError {
+                    define init(str msg) {
+                        this.message = msg;
+                        this.code = 87;
+                    }
+                }
+        class SyntaxError extends Exception {
+            define init(str msg, int err_code) {
+                this.message = msg;
+                this.code = err_code;
+            }
+        }
+            class IndentationError extends SyntaxError {
+                define init(str msg) {
+                    this.message = msg;
+                    this.code = 400; 
+                }
+            }
+                class TabError extends IndentationError {
+                    define init(str msg) {
+                        this.message = msg;
+                        this.code = 401;
+                    }
+                }
+        class OSError extends Exception {
+            define init(str msg, int err_code) {
+                this.message = msg;
+                this.code = err_code;
+            }
+        }
+            class FileNotFoundError extends OSError {
+                define init(str msg) {
+                    this.message = msg;
+                    this.code = 2; // ENOENT - Dosya veya dizin bulunamadı
+                }
+            }
+            class FileExistsError extends OSError {
+                define init(str msg) {
+                    this.message = msg;
+                    this.code = 17; 
+                }
+            }
+            class PermissionError extends OSError {
+                define init(str msg) {
+                    this.message = msg;
+                    this.code = 13; 
+                }
+            }
+            class TimeoutError extends OSError {
+                define init(str msg) {
+                this.message = msg;
+                this.code = 110; 
+                }
+            }
+            class IsADirectoryError extends OSError {
+                define init(str msg) {
+                    this.message = msg;
+                    this.code = 21; 
+                }
+            }
+            class NotADirectoryError extends OSError {
+                define init(str msg) {
+                    this.message = msg;
+                    this.code = 20; 
+                }
+            }
+            class ConnectionError extends OSError {
+                define init(str msg, int err_code) {
+                    this.message = msg;
+                    this.code = err_code;
+                }
+            }
+                class ConnectionRefusedError extends ConnectionError {
+                    define init(str msg) {
+                        this.message = msg;
+                        this.code = 111; 
+                    }
+                }
+                class BrokenPipeError extends ConnectionError {
+                    define init(str msg) {
+                        this.message = msg;
+                        this.code = 32; 
+                    }
+                }
+                class ConnectionAbortedError extends ConnectionError {
+                    define init(str msg) {
+                        this.message = msg;
+                        this.code = 103; 
+                    }
+                }
+                class ConnectionResetError extends ConnectionError {
+                    define init(str msg) {
+                        this.message = msg;
+                        this.code = 104;
+                    }
+                }
+
+        class AllegationError extends Exception {
+            define init(str msg) {
+                this.message = msg;
+                this.code = 1;
+            }
+        }
+        class TypeError extends Exception {
+            define init(str msg) {
+                this.message = msg;
+                this.code = 120;
+            }
+        }
+        class ReferenceError extends Exception {
+            define init(str msg) {
+                this.message = msg;
+                this.code = 103;
+            }
+        }
+        class AttributeError extends Exception {
+            define init(str msg) {
+                this.message = msg;
+                this.code = 104;
+            }
+        }
+        class EOFError extends Exception {
+            define init(str msg) {
+                this.message = msg;
+                this.code = 107;
+            }
+        }
+        class BufferError extends Exception {
+            define init(str msg) {
+                this.message = msg;
+                this.code = 105;
+            }
+        }
+        class ImportError extends Exception {
+            define init(str msg, int err_code) {
+                this.message = msg;
+                this.code = err_code;
+            }
+        }
+            class ModuleNotFoundError extends ImportError {
+                define init(str msg) {
+                    this.message = msg;
+                    this.code = 109;
+                }
+            }
+        class RuntimeError extends Exception {
+            define init(str msg, int err_code) {
+                this.message = msg;
+                this.code = err_code;
+            }
+        }
+            class NotImplementedError extends RuntimeError {
+                define init(str msg) {
+                    this.message = msg;
+                    this.code = 38;
+                }
+            }
+        class StopIteration extends Exception {
+            define init(str msg) {
+                this.message = msg;
+                this.code = 113;
+            }
+        }
+        class StopAsyncIteration extends Exception {
+            define init(str msg) {
+                this.message = msg;
+                this.code = 114; 
+            }
+        }
+
+
+    class FatalError extends BaseException {
+    hex fault_addr;
+
+    define init(str msg, int err_code, var addr) {
+        this.message = msg;
+        this.code = err_code;
+        this.fault_addr = addr;
+    }
+
+    define print_fatal() {
+        print("[CRITICAL ERROR: "); print(this.code); print("]: ");
+        print(this.message); print(" | Adress: ");
+        //HEX FONKISYONU BAĞLA
+        print(this.fault_addr); print("\n");
+    }
+}
+
+        class SystemExit extends FatalError {
+        define init(str msg, int status_code) {
+            this.message = msg;
+            this.code = status_code;
+            this.fault_addr = 0x00;
+        }        
+        }
+
+        class KeyboardInterrupt extends FatalError {
+        define init(str msg) {
+            this.message = msg;
+            this.code = 130; // SIGINT 128 + 2
+            this.fault_addr = 0x00;
+        }
+        }
+
+        class GeneratorExit extends FatalError {
+        define init(str msg) {
+            this.message = msg;
+            this.code = 1000; //Generator Teardown
+            this.fault_addr = 0x00;
+        }
+        }
+    
+        class MemoryError extends FatalError {
+        define init(str msg, var fail_addr) {
+            this.message = msg;
+            this.code = 12; // ENOMEM
+            this.fault_addr = fail_addr;
+        }
+        }
+
+        class SystemError extends FatalError {
+            define init(str msg, int sys_err_code) {
+                this.message = msg;
+                this.code = sys_err_code;
+                this.fault_addr = 0x00;
+            }
+        }
+
+        class RecursionError extends FatalError {
+            define init(str msg, var stack_limit_addr) {
+                this.message = msg;
+                this.code = 139;
+                this.fault_addr = stack_limit_addr;
+            }
+        }
+
+
+
+
+
+    class Warning extends BaseException {
+    define init(str msg) {
+        this.message = msg;
+        this.code = 0;
+    }
+
+    define warn() {
+        print("[WARNING]: "); print(this.message); print("\n");
+    }
+}
+        class DeprecationWarning extends Warning {
+            define init(str msg) {
+                this.message = msg;
+                this.code = 201;
+            }
+        }
+        class PendingDeprecationWarning extends Warning {
+            define init(str msg) {
+                this.message = msg;
+                this.code = 202;
+            }
+        }
+        class UserWarning extends Warning {
+            define init(str msg) {
+                this.message = msg;
+                this.code = 203;
+            }
+        }
+        class SyntaxWarning extends Warning {
+            define init(str msg) {
+                this.message = msg;
+                this.code = 204;
+            }
+        }
+        class RuntimeWarning extends Warning {
+            define init(str msg) {
+                this.message = msg;
+                this.code = 205;
+            }
+        }
+        class FutureWarning extends Warning {
+            define init(str msg) {
+                this.message = msg;
+                this.code = 206; 
+            }
+        }
+        class ImportWarning extends Warning {
+            define init(str msg) {
+                this.message = msg;
+                this.code = 207; 
+            }
+        }
+        class UnicodeWarning extends Warning {
+            define init(str msg) {
+                this.message = msg;
+                this.code = 208;
+            }
+        }
+        class BytesWarning extends Warning {
+            define init(str msg) {
+                this.message = msg;
+                this.code = 209; 
+            }
+        }
+        class ResourceWarning extends Warning {
+            define init(str msg) {
+                this.message = msg;
+                this.code = 210;
+            }
+        }
+        class EncodingWarning extends Warning {
+            define init(str msg) {
+                this.message = msg;
+                this.code = 211;
+            }
+        }
+
+// FOLLOWING CODELINES ARE FOR TESTING.
+// ----------------------------------------
+/# 
+print("--- SIGSEGV (SEGFAULT) CATCH TEST ---\n\n");
+
+print("[1] Program is running...\n");
+
+attempt {
+    print("[2] In an attempt. Creating Segfault...\n");
+    
+    var yasakli_adres = 1193046; // 0x123456 in base 10
+    var hedef_pointer = ptr_to(yasakli_adres);
+    
+    var okunan = get_mem(yasakli_adres, 0); 
+    
+    print("How tf did this even got printed");
+} exclude {
+    print("\n--- SEGFAULT CAUGHT ---\n");
+    print("Compromised Memory Address (Hex): ");
+    
+    
+    syscall(0, err, 0);
+    print_hex(err);     
+    print("\n\n");
+}
+
+print("[3] Program did not crash and is still running...\n");
+print("--- TEST COMPLETE ---\n");
+// ----------------------------------------
+include "std/error.wr";
+
+print("--- ERROR MANAGEMENT SYSTEM TEST ---\n\n");
+
+print("[1] Creating Warning...\n");
+var uyari = new Warning("Bellek kullanim orani %85'e ulasti!");
+uyari.warn();
+print("Warning Code (Should be 0): ");
+print(uyari.code);
+print("\n\n");
+
+print("[2] Creating Exception...\n");
+var hata = new Exception("Index Out Of Bounds", 99);
+hata.print_err();
+print("\n");
+
+print("[3] Creating FatalError...\n");
+
+var simule_adres = 2147441200; 
+
+var kritik_hata = new FatalError("Segmentation Fault (SIGSEGV)", 139, simule_adres);
+kritik_hata.print_fatal();
+print("\n");
+
+print("[4] Inheritance and Upcast Test...\n");
+BaseException ata_hata = kritik_hata; 
+
+print("Reading Message on Parent Class: ");
+print(ata_hata.message);
+print("\nReading Error Code on Parent Class: ");
+print(ata_hata.code);
+print("\n");
+
+print("[5] Attempt/Exclude Test...\n");
+
+attempt {
+    print(" -> Triggering Exception...\n");
+    trigger hata.code; 
+    print(" -> This line should never print\n");
+} exclude {
+    print(" -> Caught Exclusion, Error Code: ");
+    print(err);
+    print("\n -> Error Object Message: ");
+    print(hata.message);
+    print("\n");
+} final {
+    print(" -> Final Running...\n");
+    free(uyari);
+    free(hata);
+    free(kritik_hata);
+}
+
+print("\n--- TEST COMPLETE --- \n");
+// ----------------------------------------
+include "std/error.wr";
+
+print("--- FATAL ERROR LIBRARY TEST ---\n\n");
+
+print("[1] SystemExit...\n");
+var sys_exit = new SystemExit("Program closed normally.", 0);
+print(" -> Message: ");
+print(sys_exit.message);
+print("\n -> Exit Code (should be 0): ");
+print(sys_exit.code);
+print("\n\n");
+
+print("[2] KeyboardInterrupt....\n");
+var sig_int = new KeyboardInterrupt("");
+print(" -> Message: ");
+print(sig_int.message);
+print("\n -> Signal Code (Should be 130): ");
+print(sig_int.code);
+print("\n\n");
+
+print("[3] GeneratorExit...\n");
+var gen_exit = new GeneratorExit("Generator Exit.");
+print(" -> Message: ");
+print(gen_exit.message);
+print("\n -> Core Code (Should be 1000): ");
+print(gen_exit.code);
+print("\n\n");
+
+// [4] MEMORY ERROR TESTİ (Bellek Adresiyle Birlikte)
+print("[4] MemoryError...\n");
+var heap_fail_addr = 0x000000007fff8800; // Simüle edilmiş Heap taşma adresi
+var mem_err = new MemoryError("Out of Heap Memory (ENOMEM), failed alloc().", heap_fail_addr);
+print(" -> Message: ");
+print(mem_err.message);
+print("\n -> Error Code (should be 12): ");
+print(mem_err.code);
+print("\n -> Failed Allocation Address: ");
+print_hex(mem_err.fault_addr);
+print("\n\n");
+
+// [5] SYSTEM ERROR TESTİ
+print("[5] SystemError...\n");
+var os_err = new SystemError("System Error.", 5);
+print(" -> Message: ");
+print(os_err.message);
+print("\n -> OS Error Code (should be 5): ");
+print(os_err.code);
+print("\n\n");
+
+print("[6] RecursionError and Upcast (Polymorphizm)...\n");
+var stack_limit = 0x0000000010000000;
+var rec_err = new RecursionError("Stack Overflow!", stack_limit);
+
+FatalError ata_fatal = rec_err;
+BaseException ata_base = rec_err;
+
+print(" -> Parent Class (BaseException) Message: ");
+print(ata_base.message);
+print("\n -> Parent Class (FatalError) Error Code (should be 139): ");
+print(ata_fatal.code);
+print("\n -> Parent Class (FatalError) Stack Address: ");
+print_hex(ata_fatal.fault_addr);
+print("\n\n");
+
+print("[7]MemoryError Exclusion...\n");
+
+attempt {
+    print(" -> Triggering MemoryError...\n");
+    trigger mem_err.code; 
+    print(" -> This line should not be printed mofo\n");
+} exclude {
+    print(" -> Exclude Caught the Error. Caught Code: ");
+    print(err);
+} final {
+    print(" -> Final: Clearing RAM...\n");
+    free(sys_exit);
+    free(sig_int);
+    free(gen_exit);
+    free(mem_err);
+    free(os_err);
+    free(rec_err);
+}
+
+print("\n--- TEST COMPLETE --- \n");
+#/

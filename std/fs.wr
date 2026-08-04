@@ -1,0 +1,229 @@
+/#  WRENCH STANDARD LIBRARY
+    stf/fs.wr
+    File System Library
+#/
+class File {
+    int fd;
+    int size;
+    var content;
+
+    define init(str file_path) {
+        // 1. Open the file (sys_open = Syscall 2)
+        // Parameters: 2 (rax), path (rdi), 0 O_RDONLY (rsi), 0 mode (rdx)
+        this.fd = syscall(2, file_path, 0, 0);
+
+        if (this.fd < 0) {
+            print("Critical Error: File couldn't open -> ");
+            print(file_path);
+            print("\n");
+            trigger 1;
+        }
+
+        // 2. Find the filesize (sys_lseek = Syscall 8)
+        // SEEK_END = 2 
+        this.size = syscall(8, this.fd, 0, 2);
+
+        syscall(8, this.fd, 0, 0);
+
+        this.content = alloc(this.size + 1);
+
+        syscall(0, this.fd, this.content, this.size);
+
+    }
+
+    define read() {
+        return this.content;
+    }
+
+    define close() {
+        syscall(3, this.fd);
+        delete this.content;
+    }
+}
+
+define write_file(str file_path, str content) {
+    // O_WRONLY (1) | O_CREAT (64) | O_TRUNC (512) = 577
+    // File permissions (mode) = 0644 octal = 420 decimal
+    var fd = syscall(2, file_path, 577, 420) cast int;
+    if (fd < 0) {
+        return false;
+    }
+
+    var length = 0;
+    while (content[length] != 0 cast char) {
+        length += 1;
+    }
+
+    syscall(1, fd, content, length); // sys_write
+    syscall(3, fd); // sys_close
+    return true;
+}
+
+define append_file(str file_path, str content) {
+    // O_WRONLY (1) | O_CREAT (64) | O_APPEND (1024) = 1089
+    var fd = syscall(2, file_path, 1089, 420) cast int;
+    if (fd < 0) {
+        return false;
+    }
+
+    var length = 0;
+    while (content[length] != 0 cast char) {
+        length += 1;
+    }
+
+    syscall(1, fd, content, length); // sys_write
+    syscall(3, fd); // sys_close
+    return true;
+}
+
+define delete_file(str file_path) {
+    // sys_unlink = 87
+    var res = syscall(87, file_path) cast int;
+    if (res < 0) {
+        return false;
+    }
+    return true;
+}
+
+define dir_list(str dir_path) {
+    var file_list = new List();
+    // O_RDONLY (0) | O_DIRECTORY (65536) = 65536
+    var fd = syscall(2, dir_path, 65536, 0) cast int;
+    if (fd < 0) {
+        print("FS Error: Could not open directory\n");
+        return file_list;
+    } 
+
+    var buf_size = 1024;
+    var buffer = alloc(buf_size) cast str;
+
+    while (true) {
+        // sys_getdents = 78, sys_getdents64 = 217
+        var bread = syscall(217, fd, buffer, buf_size) cast int;
+        if (bread <= 0) {
+            break;
+        }
+
+        var bpos = 0;
+        while (bpos < bread) {
+            // linux_dirent struct (64-bit): 
+            // d_ino (8 byte) + d_off (8 byte) + d_reclen (2 byte) + d_type (1 byte) + d_name (variable)
+            // linux_dirent struct (32-bit): 
+            // d_ino (8 byte) + d_off (8 byte) + d_reclen (2 byte) + d_name (variable)
+            var b1 = buffer[bpos + 16] cast int;
+            var b2 = buffer[bpos + 17] cast int;
+            var reclen = b1 + (b2 * 256);
+            // 64-bit : 19, 32-bit: 18
+            var name_start = bpos + 19;
+
+            var name_len = 0;
+            while (buffer[name_start + name_len] != 0 cast char) {
+                name_len += 1;
+            }
+
+            if (name_len > 0) {
+                var file_name = alloc(name_len + 1) cast str;
+                var k = 0;
+                while (k < name_len) {
+                    file_name[k] = buffer[name_start + k];
+                    k += 1;
+                }
+
+                file_name[name_len] = 0 cast char;
+
+                var skip = false;
+                if (name_len =? 1) {
+                    if (file_name[0] =? "." cast char){
+                        skip = true;
+                    }
+                }
+                if (name_len =? 2) {
+                    if (file_name[0] =? "." cast char) {
+                        if (file_name[1] =? "." cast char) {
+                            skip = true;
+                        }
+                    }
+                }
+
+                if (skip =? false) {
+                    file_list.push(file_name);
+                } 
+                else {
+                    free(file_name);
+                }
+            }
+
+            bpos += reclen;
+
+        }
+    }
+
+    free(buffer);
+    syscall(3, fd);
+    return file_list;
+}
+
+// FOLLOWING CODELINES ARE FOR TESTING.
+// ----------------------------------------
+/# 
+from "std/fs.wr" include File;
+
+print("--- Wrench Dosya Okuma Testi ---\n");
+
+
+var my_file = new File("fs");
+
+print("Dosya Boyutu: ");
+print(my_file.size cast integer);
+print(" bayt\n\n");
+
+print("--- DOSYA ICERIGI ---\n");
+print(my_file.read());
+print("\n---------------------\n");
+
+my_file.close();
+free(my_file);
+// ----------------------------------------
+include "std/collections.wr";
+include "std/fs.wr";
+
+print("--- FILE SYSTEM (FS) LIBRARY TEST ---\n\n");
+
+var test_dosyasi = "wrench_test.txt";
+
+print("[*] Creating and writing to file...\n");
+var w_res = write_file(test_dosyasi, "Hello from Wrench Compiler!\n");
+if (w_res) { print(" -> Write OK.\n"); }
+
+print("[*] Appending to file...\n");
+var a_res = append_file(test_dosyasi, "This line was appended.\n");
+if (a_res) { print(" -> Append OK.\n"); }
+
+print("[*] Reading file contents...\n");
+var dosya = new File(test_dosyasi);
+print("--- FILE START ---\n");
+print(dosya.read());
+print("--- FILE END ---\n");
+dosya.close();
+
+print("\n[*] Listing current directory contents...\n");
+List files = dir_list(".");
+var count = files.length;
+var i = 0;
+
+while (i < count) {
+    var f_name = files.get(i) cast str;
+    
+    print(" - ");
+    print(f_name);
+    print("\n");
+    
+    if (f_name =? test_dosyasi) {
+        print(" -> Found our test file! Deleting it...\n");
+        delete_file(test_dosyasi);
+    }
+    i += 1;
+}
+
+print("\n--- ALL FS TESTS COMPLETED ---\n");
+#/ 
