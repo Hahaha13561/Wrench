@@ -2,6 +2,9 @@
     stf/fs.wr
     File System Library
 #/
+
+include "std/collections.wr";
+
 class File {
     int fd;
     int size;
@@ -31,7 +34,7 @@ class File {
 
     }
 
-    define read() {
+    define read() -> str {
         return this.content;
     }
 
@@ -41,7 +44,7 @@ class File {
     }
 }
 
-define write_file(str file_path, str content) {
+define write_file(str file_path, str content) -> bool {
     // O_WRONLY (1) | O_CREAT (64) | O_TRUNC (512) = 577
     // File permissions (mode) = 0644 octal = 420 decimal
     var fd = syscall(2, file_path, 577, 420) cast int;
@@ -59,7 +62,7 @@ define write_file(str file_path, str content) {
     return true;
 }
 
-define append_file(str file_path, str content) {
+define append_file(str file_path, str content) -> bool {
     // O_WRONLY (1) | O_CREAT (64) | O_APPEND (1024) = 1089
     var fd = syscall(2, file_path, 1089, 420) cast int;
     if (fd < 0) {
@@ -76,7 +79,7 @@ define append_file(str file_path, str content) {
     return true;
 }
 
-define delete_file(str file_path) {
+define delete_file(str file_path) -> bool {
     // sys_unlink = 87
     var res = syscall(87, file_path) cast int;
     if (res < 0) {
@@ -85,7 +88,7 @@ define delete_file(str file_path) {
     return true;
 }
 
-define dir_list(str dir_path) {
+define dir_list(str dir_path) -> List {
     var file_list = new List();
     // O_RDONLY (0) | O_DIRECTORY (65536) = 65536
     var fd = syscall(2, dir_path, 65536, 0) cast int;
@@ -162,68 +165,3 @@ define dir_list(str dir_path) {
     syscall(3, fd);
     return file_list;
 }
-
-// FOLLOWING CODELINES ARE FOR TESTING.
-// ----------------------------------------
-/# 
-from "std/fs.wr" include File;
-
-print("--- Wrench Dosya Okuma Testi ---\n");
-
-
-var my_file = new File("fs");
-
-print("Dosya Boyutu: ");
-print(my_file.size cast integer);
-print(" bayt\n\n");
-
-print("--- DOSYA ICERIGI ---\n");
-print(my_file.read());
-print("\n---------------------\n");
-
-my_file.close();
-free(my_file);
-// ----------------------------------------
-include "std/collections.wr";
-include "std/fs.wr";
-
-print("--- FILE SYSTEM (FS) LIBRARY TEST ---\n\n");
-
-var test_dosyasi = "wrench_test.txt";
-
-print("[*] Creating and writing to file...\n");
-var w_res = write_file(test_dosyasi, "Hello from Wrench Compiler!\n");
-if (w_res) { print(" -> Write OK.\n"); }
-
-print("[*] Appending to file...\n");
-var a_res = append_file(test_dosyasi, "This line was appended.\n");
-if (a_res) { print(" -> Append OK.\n"); }
-
-print("[*] Reading file contents...\n");
-var dosya = new File(test_dosyasi);
-print("--- FILE START ---\n");
-print(dosya.read());
-print("--- FILE END ---\n");
-dosya.close();
-
-print("\n[*] Listing current directory contents...\n");
-List files = dir_list(".");
-var count = files.length;
-var i = 0;
-
-while (i < count) {
-    var f_name = files.get(i) cast str;
-    
-    print(" - ");
-    print(f_name);
-    print("\n");
-    
-    if (f_name =? test_dosyasi) {
-        print(" -> Found our test file! Deleting it...\n");
-        delete_file(test_dosyasi);
-    }
-    i += 1;
-}
-
-print("\n--- ALL FS TESTS COMPLETED ---\n");
-#/ 

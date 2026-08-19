@@ -24,7 +24,7 @@ class List {
         this.length += 1;
     }
 
-    define get(int index) {
+    define get(int index) -> any {
         if (index => this.length) {
             print("List Error: Index Out Of Bounds\n");
             trigger 99;
@@ -40,7 +40,7 @@ class List {
         this.data[index] = item;
     }
 
-    define pop() {
+    define pop() -> any {
         if (this.length =? 0) {
             print ("List Error: Cannot pop from empty list\n");
             trigger 99;
@@ -70,7 +70,7 @@ class Map {
         this.values = new List();
     }
 
-    define set(str key, var value) {
+    define set(str key, var value) -> int {
         var i = 0;
         var len = this.keys.length;
 
@@ -87,7 +87,7 @@ class Map {
         return 0;
     }
 
-    define get(str key) {
+    define get(str key) -> any {
         var i = 0;
         var len = this.keys.length;
 
@@ -104,7 +104,7 @@ class Map {
         trigger 99;
     }
 
-    define has(str key) {
+    define has(str key) -> bool {
         var i = 0;
         var len = this.keys.length;
 
@@ -125,85 +125,3 @@ class Map {
         free(this.values);
     }
 }
-
-// FOLLOWING CODELINES ARE FOR TESTING.
-// ----------------------------------------
-/# 
-include "std/collections.wr";
-
-print("--- DYNAMIC LIST TEST ---\n");
-
-var my_list = new List();
-
-print("Pushing elements...\n");
-my_list.push(10);
-my_list.push(20);
-my_list.push(30);
-
-print("Element at index 1 (should be 20): ");
-print_int(my_list.get(1) cast int);
-print("\n");
-
-print("List Length: ");
-print_int(my_list.length);
-print("\n");
-
-print("Popped item (should be 30): ");
-print_int(my_list.pop() cast int);
-print("\n");
-
-print("New Length: ");
-print_int(my_list.length);
-print("\n");
-
-// Triggering Out of Bounds intentionally to test Memory Safety
-
-my_list.destroy();
-free(my_list);
-
-print("--- TEST COMPLETE ---\n");
-
-// ----------------------------------------
-include "std/collections.wr";
-include "std/string.wr";
-
-print("[*] Testing List...\n");
-var my_list = new List();
-my_list.push(10);
-my_list.push(20);
-my_list.push(30);
-print("Popped from List (should be 30): ");
-print_int(my_list.pop() cast int);
-print("\n\n");
-my_list.destroy();
-free(my_list);
-
-print("[*] Testing Map (Dictionary)...\n");
-var sym_table = new Map();
-
-sym_table.set("sayi", "int");
-sym_table.set("metin", "string");
-sym_table.set("aktif_mi", "bool");
-
-print("Type of 'metin' (should be string): ");
-print(sym_table.get("metin") cast str);
-print("\n");
-
-sym_table.set("sayi", "double");
-print("Updated type of 'sayi' (should be double): ");
-print(sym_table.get("sayi") cast str);
-print("\n");
-
-if (sym_table.has("aktif_mi")) {
-    print("'aktif_mi' exists in Map!\n");
-}
-
-if (sym_table.has("olmayan_degisken") =? false) {
-    print("'olmayan_degisken' does NOT exist! (Correct)\n");
-}
-
-sym_table.destroy();
-free(sym_table);
-
-print("\n--- ALL TESTS PASSED ---\n");
-/#

@@ -3,7 +3,9 @@
     String Library
 #/
 
-define str_len(str text) {
+include "std/collections.wr";
+
+define str_len(str text) -> int {
     var i = 0;
     while (text[i] != 0 cast char) {
         i += 1;
@@ -11,7 +13,7 @@ define str_len(str text) {
     return i;
 }
 
-define substring(str text, int start, int end) {
+define substring(str text, int start, int end) -> str {
     var length = end - start;
     str result = alloc(length + 1);
 
@@ -24,7 +26,7 @@ define substring(str text, int start, int end) {
     return result;
 }
 
-define uppercase(str text) {
+define uppercase(str text) -> str {
     var length = str_len(text);
     str result = alloc(length+1);
 
@@ -44,7 +46,7 @@ define uppercase(str text) {
     return result;
 }
 
-define lowercase(str text) {
+define lowercase(str text) -> str {
     var length = str_len(text);
     str result = alloc(length + 1);
 
@@ -64,7 +66,7 @@ define lowercase(str text) {
     return result;
 }
 
-define split(str text, char delimeter) {
+define split(str text, char delimeter) -> var {
     var length = str_len(text);
     var count = 1;
     var i = 0;
@@ -93,62 +95,14 @@ define split(str text, char delimeter) {
     return list;
 }
 
-define parse_int(str text) {
+define parse_int(str text) -> int {
     return text cast int;
 }
 
-define to_string(int number) {
+define to_string(int number) -> str {
     return number cast str;
 }
 
-define concat(str left, str right) {
+define concat(str left, str right) -> str {
     return left + right;
 }
-
-// FOLLOWING CODELINES ARE FOR TESTING.
-// ----------------------------------------
-/# 
-include "std/string.wr";
-
-var test_str = "Wrench Compiler";
-print("Original Text: ");
-print(test_str);
-print("\n");
-
-print("Length: ");
-print(str_len(test_str) cast int);
-print("\n");
-
-print("Uppercase: ");
-print(uppercase(test_str));
-print("\n");
-
-print("Lowercase: ");
-print(lowercase(test_str));
-print("\n");
-
-var num_str = "2026";
-var num = parse_int(num_str);
-print("Parsed Integer + 10: ");
-print(num + 10); 
-print("\n");
-
-var year_str = to_string(num + 10);
-print("Concat Test: ");
-print(concat("Year is ", year_str));
-print("\n");
-
-var sentence = "apple,banana,cherry";
-var fruits = split(sentence, "," cast char);
-
-print("Split Test (Second item): ");
-print(fruits[1]);
-print("\n");
-
-
-if (fruits[0] ?= "apple") {
-    print("Equality operator (?=) works perfectly!\n");
-}
-
-print("\n--- TEST COMPLETE ---\n");
-/#

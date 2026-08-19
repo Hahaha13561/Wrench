@@ -1,0 +1,180 @@
+/# WRENCH STANDARD LIBRARY
+    std/subprocess.wr
+    Process Management & Execution Subsystem
+#/
+
+// SYSCALL CONSTANTS FOR x86-64 LINUX:
+var SYS_READ     = 0;
+var SYS_WRITE    = 1;
+var SYS_CLOSE    = 3;
+var SYS_PIPE     = 22;
+var SYS_DUP2     = 33;
+var SYS_FORK     = 57;
+var SYS_EXECVE   = 59;
+var SYS_WAIT4    = 61;
+var SYS_KILL     = 62;
+
+class CompletedProcess {
+    var cmd;
+    int returncode;
+    string stdout;
+    string stderr;
+    string output;
+
+    define init(var cmd, int returncode, string stdout, string stderr) {
+        this.cmd = cmd;
+        this.returncode = returncode;
+        this.stdout = stdout;
+        this.stderr = stderr;
+        this.output = stdout + "\n" + stderr;
+    }
+}
+
+class Popen {
+    int pid;
+    int stdin_fd;
+    int stdout_fd;
+    int stderr_fd;
+    int returncode;
+    var cmd;
+
+    define init(var cmd_array) {
+        this.cmd = cmd_array;
+        this.returncode = -1;
+        this.pid = -1;
+    }
+
+    define poll() -> int {
+        if (this.returncode != -1) {
+            return this.returncode;
+        }
+
+        var status_ptr = alloc(8);
+        var res = syscall(SYS_WAIT4, this.pid, status_ptr, 1, 0);
+
+        if (res > 0) {
+            var raw_status = get_mem(status_ptr, 0);
+
+            if (raw_status % 256 =? 0) {
+                this.returncode = (raw_status / 256) % 256;
+            } else {
+                this.returncode = -1;
+            }
+
+            free(status_ptr);
+            return this.returncode;
+        }
+
+        free(status_ptr);
+        return -1;
+    }
+
+    define wait_proc(int timeout_ms) -> int {
+        var elapsed = 0;
+        var check_interval = 10; // 10ms per poll
+
+        while (true) {
+            var code = this.poll();
+            if (code != -1) {
+                return code;
+            }
+
+            if (timeout_ms > 0 and elapsed >= timeout_ms) {
+                syscall(SYS_KILL, this.pid, 9);
+                this.returncode = -9; // SIGKILL
+                return -9;
+            }
+
+            syscall(35, 0, 10000000); // 10ms sleep
+            elapsed += check_interval;
+        }
+        return -1;
+    }
+
+    define communicate() -> CompletedProcess {
+        var out_buf = alloc(4096);
+        var err_buf = alloc(4096);
+
+        syscall(SYS_READ, this.stdout_fd, out_buf, 4096);
+        syscall(SYS_READ, this.stderr_fd, err_buf, 4096);
+
+        syscall(SYS_CLOSE, this.stdout_fd);
+        syscall(SYS_CLOSE, this.stderr_fd);
+
+        this.wait_proc(0);
+
+        var out_str = out_buf cast str;
+        var err_str = err_buf cast str;
+
+        //Error buffer and Out buffer are not freed.
+        
+
+        return new CompletedProcess(this.cmd, this.returncode, out_str, err_str);
+    }
+}
+
+define run(var cmd_array, bool capture_output, int timeout_ms) -> CompletedProcess {
+    var stdout_pipe = alloc(16);
+    var stderr_pipe = alloc(16);
+
+    if (capture_output) {
+        syscall(SYS_PIPE, stdout_pipe);
+        syscall(SYS_PIPE, stderr_pipe);
+    }
+
+    var pid = syscall(SYS_FORK);
+
+    if (pid =? 0) {
+        if (capture_output) {
+            var out_read = get_mem32(stdout_pipe, 0);
+            var out_write = get_mem32(stdout_pipe, 4);
+            var err_read = get_mem32(stderr_pipe, 0);
+            var err_write = get_mem32(stderr_pipe, 4);
+
+            syscall(SYS_CLOSE, out_read);
+            syscall(SYS_CLOSE, err_read);
+
+            syscall(SYS_DUP2, out_write, 1);
+            syscall(SYS_DUP2, err_write, 2);
+
+            syscall(SYS_CLOSE, out_write);
+            syscall(SYS_CLOSE, err_write);
+        }
+
+        var binary_path = cmd_array[0];
+        syscall(SYS_EXECVE, binary_path, cmd_array, 0);
+
+        syscall(60, 127);
+    }
+
+    var proc = new Popen(cmd_array);
+    proc.pid = pid;
+
+    if (capture_output) {
+        var out_read = get_mem32(stdout_pipe, 0);
+        var out_write = get_mem32(stdout_pipe, 4);
+        var err_read = get_mem32(stderr_pipe, 0);
+        var err_write = get_mem32(stderr_pipe, 4);
+
+        syscall(SYS_CLOSE, out_write);
+        syscall(SYS_CLOSE, err_write);
+
+        proc.stdout_fd = out_read;
+        proc.stderr_fd = err_read;
+
+        free(stdout_pipe);
+        free(stderr_pipe);
+
+        if (timeout_ms > 0) {
+            proc.wait_proc(timeout_ms);
+        }
+
+        return proc.communicate();
+    } else {
+        free(stdout_pipe);
+        free(stderr_pipe);
+
+        var code = proc.wait_proc(timeout_ms);
+        return new CompletedProcess(cmd_array, code, "", "");
+    }
+}

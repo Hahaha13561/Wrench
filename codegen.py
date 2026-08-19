@@ -1,6 +1,8 @@
 class CodeGen:
-    def __init__(self):
+    def __init__(self, semantic_analyzer=None):
         self.assembly = []
+        self.functions_code = [] # Serbest fonksiyonlar ve metotların bağımsız bloğu
+        self.current_func_exit_label = None # Ortak çıkış etiketi
         self.environments = [{}] # Hafıza offset'lerini tutan Symbol Table
         self.stack_offset = 0 # RAM'de kaç bayt aşağı inildiği (Offset Tracker)
         self.label_count = 0 # Label sayacı
@@ -10,22 +12,115 @@ class CodeGen:
         self.type_environments = [{}]
         self.current_class = None
         self.loop_stack = []
+        self.function_return_types = {}
+        self.method_return_types = {}
+        self.semantic_analyzer = semantic_analyzer
 
+        if semantic_analyzer:
+            self.sync_semantic(semantic_analyzer)
+
+    def sync_semantic(self, sem):
+        """SemanticAnalyzer'ın topladığı tüm fonksiyon, metot ve sınıf tiplerini CodeGen'e aktarır."""
+        self.semantic_analyzer = sem
+
+        if hasattr(sem, 'functions'):
+            for f_name, f_info in sem.functions.items():
+                if isinstance(f_info, dict):
+                    self.function_return_types[f_name] = f_info.get('return_type', 'unit')
+                elif hasattr(f_info, 'return_type'):
+                    self.function_return_types[f_name] = f_info.return_type
+
+        if hasattr(sem, 'classes'):
+            for c_name, c_info in sem.classes.items():
+                methods = c_info.get('methods', {}) if isinstance(c_info, dict) else getattr(c_info, 'methods', {})
+                for m_name, m_info in methods.items():
+                    m_ret = m_info.get('return_type', 'unit') if isinstance(m_info, dict) else getattr(m_info, 'return_type', 'unit')
+                    self.method_return_types[(c_name, m_name)] = m_ret
 
     def generate(self, node):
         """Ağactaki Node'un türüne göre ilgili fonksiyonu çalıştırır."""
         method_name = f'visit_{type(node).__name__}'
         visitor = getattr(self, method_name, self.generic_visit)
         return visitor(node)
-    
+
+    def generate_branch(self, cond_node, false_label):
+        """Turn the Condition Statements into Inverse JMP instructions."""
+
+        #If the condition is a BinOp:
+        if type(cond_node).__name__ == 'BinOpNode':
+            op = cond_node.op_tok[1]
+            op_type = getattr(cond_node, 'operand_type', getattr(cond_node.left_node, 'eval_type', 'int'))
+
+            #Integer comparisions
+            if op_type in ('int', 'integer', 'bool', 'ptr', 'pointer') and op in ('=?', '?=', 'is', 'same', '!=', '=!', '>', '<', '>=', '=>', '<=', '=<'):
+                self.generate(cond_node.left_node)
+                self.assembly.append("    push rax")
+                self.generate(cond_node.right_node)
+                self.assembly.append("    mov rbx, rax")
+                self.assembly.append("    pop rax")
+                self.assembly.append("    cmp rax, rbx")
+
+                #Inverse jumps
+                if op in ('=?', '?=', 'is', 'same'): self.assembly.append(f"    jne {false_label}")
+                elif op in ('!=', '=!'):            self.assembly.append(f"    je {false_label}")
+                elif op == '>':                     self.assembly.append(f"    jle {false_label}")
+                elif op == '<':                     self.assembly.append(f"    jge {false_label}")
+                elif op in ('>=', '=>'):            self.assembly.append(f"    jl {false_label}")
+                elif op in ('<=', '=<'):            self.assembly.append(f"    jg {false_label}")
+                return
+
+            #Float/Double Comparisions
+            elif op_type == 'double' and op in ('=?', '?=', 'is', 'same', '!=', '=!', '>', '<', '>=', '=>', '<=', '=<'):
+                self.generate(cond_node.right_node)
+                self.assembly.append("    push rax")
+                self.generate(cond_node.left_node)
+                self.assembly.append("    movq xmm0, rax")
+                self.assembly.append("    movq xmm1, [rsp]")
+                self.assembly.append("    add rsp, 8")
+                self.assembly.append("    ucomisd xmm0, xmm1")
+
+                #Inverse Jumps
+                if op in ('=?', '?=', 'is', 'same'): self.assembly.append(f"    jne {false_label}")
+                elif op in ('!=', '=!'):            self.assembly.append(f"    je {false_label}")
+                elif op == '>':                     self.assembly.append(f"    jbe {false_label}")
+                elif op == '<':                     self.assembly.append(f"    jae {false_label}")
+                elif op in ('>=', '=>'):            self.assembly.append(f"    jb {false_label}")
+                elif op in ('<=', '=<'):            self.assembly.append(f"    ja {false_label}")
+                return
+
+            #String Comparisions
+            elif op_type in ('str', 'string') and op in ('=?', '?=', 'is', 'same', '!=', '=!', '>', '<', '>=', '=>', '<=', '=<'):
+                self.generate(cond_node.right_node)
+                self.assembly.append("    push rax")
+                self.generate(cond_node.left_node)
+                self.assembly.append("    mov rdi, rax")
+                self.assembly.append("    pop rsi")
+                self.assembly.append("    call compare_strings")
+                self.assembly.append("    test rax, rax")
+
+                #Inverse Jumps
+                if op in ('=?', '?=', 'is', 'same'): self.assembly.append(f"    jne {false_label}")
+                elif op in ('!=', '=!'):            self.assembly.append(f"    je {false_label}")
+                elif op == '>':                     self.assembly.append(f"    jle {false_label}")
+                elif op == '<':                     self.assembly.append(f"    jge {false_label}")
+                elif op in ('>=', '=>'):            self.assembly.append(f"    jl {false_label}")
+                elif op in ('<=', '=<'):            self.assembly.append(f"    jg {false_label}")
+                return
+
+        self.generate(cond_node)
+        self.assembly.append("    test rax, rax")
+        self.assembly.append(f"    je {false_label}")
+
     def generic_visit(self, node):
-        raise Exception (f'HATA: CodeGen içinde {type(node).__name__} için bir Assembly çevirisi yazılmamış.')
+        raise Exception (f'ERROR: No Assembly Translation for {type(node).__name__}.')
 
     def get_code(self):
         """Assembly kodunu birleştirip çalıştırılabilir NASM şablonu verir."""
 
         data_code = [
             "section .data",
+            "    empty_str db 0",
+            "    null_print_msg db `(null)`, 0",
             "    dot_str db `.`, 0",
             "    segfault_msg db `[CRITICAL]: Violated Memory Adress -->`, 0",
             "    unhandled_msg db `[FATAL]: Uncaught Segfault! Program Terminated.`, 10, 0",
@@ -51,8 +146,10 @@ class CodeGen:
             "print_string:",
             "    push rbp",
             "    mov rbp, rsp",
+            "    test rax, rax",
+            "    je .print_null_str",
             "    mov rbx, rax",
-            "    mov rcx, 0",
+            "    xor ecx, ecx",
             ".strlen_loop:",
             "    cmp byte [rbx + rcx], 0",
             "    je .strlen_done",
@@ -61,8 +158,17 @@ class CodeGen:
             ".strlen_done:",
             "    mov rdx, rcx",
             "    mov rsi, rbx",
-            "    mov rdi, 1",
-            "    mov rax, 1",
+            "    mov edi, 1",
+            "    mov eax, 1",
+            "    syscall",
+            "    mov rsp, rbp",
+            "    pop rbp",
+            "    ret",
+            ".print_null_str:",
+            "    mov eax, 1",
+            "    mov edi, 1",
+            "    lea rsi, [rel null_print_msg]",
+            "    mov edx, 6",
             "    syscall",
             "    mov rsp, rbp",
             "    pop rbp",
@@ -73,27 +179,27 @@ class CodeGen:
             "    mov rbp, rsp",
             "    push rbx",
             "    sub rsp, 32",
-            "    mov rbx, 10",
-            "    mov rcx, 0",
-            "    mov r8, 0",
-            "    cmp rax, 0",
+            "    mov ebx, 10",
+            "    xor ecx, ecx",
+            "    xor r8d, r8d",
+            "    test rax, rax",
             "    jge .divide_loop",
             "    neg rax",
-            "    mov r8, 1",
+            "    mov r8d, 1",
             ".divide_loop:",
-            "    mov rdx, 0",
+            "    xor edx, edx",
             "    div rbx",
             "    add rdx, 48",
             "    push rdx",
             "    inc rcx",
-            "    cmp rax, 0",
+            "    test rax, rax",
             "    jne .divide_loop",
             "    cmp r8, 1",
             "    jne .pop_chars",
             "    push 45",
             "    inc rcx",
             ".pop_chars:",
-            "    mov rdi, 0",
+            "    xor edi, edi",
             ".pop_loop:",
             "    cmp rdi, rcx",
             "    je .print_num",
@@ -113,14 +219,14 @@ class CodeGen:
             "    pop rbp",
             "    ret",
             "",
-            "print_hex:"
+            "print_hex:",
             "    push rbp",
             "    mov rbp, rsp",
             "    sub rsp, 32",
             "    mov byte [rbp - 32], 48",
             "    mov byte [rbp - 31], 120",
-            "    mov rcx, 16",
-            "    mov rbx, 2",
+            "    mov ecx, 16",
+            "    mov ebx, 2",
             ".hex_loop:",
             "    mov rdx, rax",
             "    shr rdx, 60",
@@ -150,13 +256,10 @@ class CodeGen:
             "    ret",
             "",
             "sigsegv_handler:",
-            "",
             "    mov rax, qword [rsi + 16]",
-            "",
             "    mov rbx, qword [rel global_err_frame]",
             "    cmp rbx, 0",
             "    je .unhandled_segfault",
-            "",
             "    mov rcx, qword [rbx + 24]",
             "    mov qword [rel global_err_frame], rcx",
             "    mov rdx, qword [rbx + 16]",
@@ -170,7 +273,7 @@ class CodeGen:
             "    lea rsi, [rel unhandled_msg]",
             "    mov rdx, 56",
             "    syscall",
-            "    mov rax, 60",
+            "    mov eax, 60",
             "    mov rdi, 139",
             "    syscall",
             "",
@@ -188,13 +291,11 @@ class CodeGen:
             "    push rbx",
             "    mov rax, rbx",
             "    call print_int",
-            "",
             "    mov rax, 1",
             "    mov rdi, 1",
             "    lea rsi, [rel dot_str]",
             "    mov rdx, 1",
             "    syscall",
-            "",
             "    pop rbx",
             "    movsd xmm0, [rsp]",
             "    add rsp, 16",
@@ -204,8 +305,7 @@ class CodeGen:
             "    cvtsi2sd xmm1, rax",
             "    mulsd xmm0, xmm1",
             "    cvttsd2si rax, xmm0",
-            "",
-            "    cmp rax, 0",
+            "    test rax, rax",
             "    jge .print_frac",
             "    neg rax",
             ".print_frac:",
@@ -217,16 +317,24 @@ class CodeGen:
             "concat_strings:",
             "    push rbp",
             "    mov rbp, rsp",
+            "    cmp rdi, 0",
+            "    jne .check_rsi",
+            "    lea rdi, [rel empty_str]",
+            ".check_rsi:",
+            "    cmp rsi, 0",
+            "    jne .do_concat",
+            "    lea rsi, [rel empty_str]",
+            ".do_concat:",
             "    push rdi",
             "    push rsi",
-            "    mov rbx, 0",
+            "    xor ebx, ebx",
             ".len1:",
             "    cmp byte [rdi + rbx], 0",
             "    je .len1_done",
             "    inc rbx",
             "    jmp .len1",
             ".len1_done:",
-            "    mov rcx, 0",
+            "    xor ecx, ecx",
             ".len2:",
             "    cmp byte [rsi + rcx], 0",
             "    je .len2_done",
@@ -247,23 +355,22 @@ class CodeGen:
             "    pop rax",
             "    pop rsi",
             "    pop rdi",
-            "    mov r9, 0",
+            "    xor r9d, r9d",
             ".copy1:",
             "    cmp r9, rbx",
             "    je .copy1_done",
-            "    mov al, byte [rdi + r9]",
-            "    mov byte [r8 + r9], al",
+            "    mov dl, byte [rdi + r9]",
+            "    mov byte [r8 + r9], dl",
             "    inc r9",
             "    jmp .copy1",
             ".copy1_done:",
-            "    mov r10, 0",
-            "",
+            "    xor r10d, r10d",
             "    lea r11, [r8 + rbx]",
             ".copy2:",
             "    cmp r10, rcx",
             "    je .copy2_done",
-            "    mov al, byte [rsi + r10]",
-            "    mov byte [r11 + r10], al",
+            "    mov dl, byte [rsi + r10]",
+            "    mov byte [r11 + r10], dl",
             "    inc r10",
             "    jmp .copy2",
             ".copy2_done:",
@@ -276,7 +383,11 @@ class CodeGen:
             "compare_strings:",
             "    push rbp",
             "    mov rbp, rsp",
-            "    mov rcx, 0",
+            "    cmp rdi, 0",
+            "    je .cmp_rdi_null",
+            "    cmp rsi, 0",
+            "    je .cmp_rsi_null",
+            "    xor ecx, ecx",
             ".cmp_loop:",
             "    mov al, byte [rdi + rcx]",
             "    mov bl, byte [rsi + rcx]",
@@ -294,7 +405,15 @@ class CodeGen:
             "    mov rax, 1",
             "    jmp .cmp_exit",
             ".cmp_equal:",
-            "    mov rax, 0",
+            "    xor eax, eax",
+            "    jmp .cmp_exit",
+            ".cmp_rdi_null:",
+            "    cmp rsi, 0",
+            "    je .cmp_equal",
+            "    mov rax, -1",
+            "    jmp .cmp_exit",
+            ".cmp_rsi_null:",
+            "    mov rax, 1",
             ".cmp_exit:",
             "    mov rsp, rbp",
             "    pop rbp",
@@ -304,7 +423,7 @@ class CodeGen:
             "    push rbp",
             "    mov rbp, rsp",
             "    mov rax, rdi",
-            "    mov rdi, 32",
+            "    mov edi, 32",
             "    push rax",
             "    call alloc",
             "    pop rcx",
@@ -318,7 +437,7 @@ class CodeGen:
             "    pop rbp",
             "    ret",
             ".check_neg:",
-            "    mov r9, 0",
+            "    xor r9d, r9d",
             "    cmp rcx, 0",
             "    jge .conv_setup",
             "    neg rcx",
@@ -326,18 +445,18 @@ class CodeGen:
             ".conv_setup:",
             "    mov rax, rcx",
             "    mov rbx, 10",
-            "    mov r10, 0",
+            "    xor r10d, r10d",
             ".conv_loop:",
-            "    cmp rax, 0",
+            "    test rax, rax",
             "    je .pop_dig",
-            "    mov rdx, 0",
+            "    xor edx, edx",
             "    div rbx",
             "    add rdx, 48",
             "    push rdx",
             "    inc r10",
             "    jmp .conv_loop",
             ".pop_dig:",
-            "    mov r11, 0",
+            "    xor r11d, r11d",
             "    cmp r9, 1",
             "    jne .pop_loop",
             "    mov byte [r8 + r11], 45",
@@ -366,17 +485,17 @@ class CodeGen:
             "    mov rdx, 3",
             "    mov r10, 34",
             "    mov r8, -1",
-            "    mov r9, 0",
+            "    xor r9d, r9d",
             "    mov rax, 9",
             "    syscall",
             "    mov rsi, rax",
             "    push rsi",
             "    mov rdi, 0",
             "    mov rdx, [rbp - 8]",
-            "    mov rax, 0",
+            "    xor eax, eax",
             "    syscall",
             "    pop rsi",
-            "    cmp rax, 0",
+            "    test rax, rax",
             "    jle .read_done",
             "    mov byte [rsi + rax - 1], 0",
             ".read_done:",
@@ -384,19 +503,18 @@ class CodeGen:
             "    mov rsp, rbp",
             "    pop rbp",
             "    ret",
-            "",
             "read_int:",
             "    push rbp",
             "    mov rbp, rsp",
             "    sub rsp, 32",
-            "    mov rax, 0",
+            "    xor eax, eax",
             "    mov rdi, 0",
             "    lea rsi, [rbp - 32]",
             "    mov rdx, 31",
             "    syscall",
-            "    mov rcx, 0",
-            "    mov rbx, 0",
-            "    mov r8, 0",
+            "    xor ecx, ecx",
+            "    xor ebx, ebx",
+            "    xor r8d, r8d",
             "    cmp byte [rbp - 32], 45",
             "    jne .atoi_loop",
             "    mov r8, 1",
@@ -405,7 +523,7 @@ class CodeGen:
             "    movzx rax, byte [rbp - 32 + rcx]",
             "    cmp rax, 10",
             "    je .atoi_done",
-            "    cmp rax, 0",
+            "    test rax, rax",
             "    je .atoi_done",
             "    cmp rax, 48",
             "    jl .atoi_done",
@@ -425,20 +543,19 @@ class CodeGen:
             "    mov rsp, rbp",
             "    pop rbp",
             "    ret",
-            "",
             "str_to_int:",
             "    push rbp",
             "    mov rbp, rsp",
-            "    mov rcx, 0",
-            "    mov rbx, 0",
-            "    mov r8, 0",
+            "    xor ecx, ecx",
+            "    xor ebx, ebx",
+            "    xor r8d, r8d",
             "    cmp byte [rdi], 45",
             "    jne .parse_loop",
             "    mov r8, 1",
             "    inc rcx",
             ".parse_loop:",
             "    movzx rax, byte [rdi + rcx]",
-            "    cmp rax, 0",
+            "    test rax, rax",
             "    je .parse_done",
             "    cmp rax, 48",
             "    jl .parse_error",
@@ -459,11 +576,10 @@ class CodeGen:
             "    pop rbp",
             "    ret",
             ".parse_error:",
-            "    mov rax, 0",
+            "    xor eax, eax",
             "    mov rsp, rbp",
             "    pop rbp",
             "    ret",
-            "",
             "int_pow:",
             "    push rbp",
             "    mov rbp, rsp",
@@ -504,6 +620,7 @@ class CodeGen:
             "    mov rsp, rbp",
             "    pop rbp",
             "    ret",
+            "",
             "alloc:",
             "    push rbp",
             "    mov rbp, rsp",
@@ -514,9 +631,15 @@ class CodeGen:
             "    mov rdx, 3",
             "    mov r10, 34",
             "    mov r8, -1",
-            "    mov r9, 0",
+            "    xor r9d, r9d",
             "    mov rax, 9",
             "    syscall",
+            "    push rax",
+            "    mov rdi, rax",
+            "    mov rcx, [rbp -8]",
+            "    xor al, al",
+            "    rep stosb",
+            "    pop rax",
             "    mov rcx, [rbp - 8]",
             "    sub rcx, 8",
             "    mov qword [rax], rcx",
@@ -553,6 +676,14 @@ class CodeGen:
             "    pop rbp",
             "    ret",
             "",
+            "get_mem32:",
+            "    push rbp",
+            "    mov rbp, rsp",
+            "    movsxd rax, dword [rdi + rsi]",
+            "    mov rsp, rbp",
+            "    pop rbp",
+            "    ret",
+            "",
             "get_len:",
             "    push rbp",
             "    mov rbp, rsp",
@@ -571,10 +702,12 @@ class CodeGen:
             "    add rcx, 8",
             "    mov rdx, rsi",
             "    add rdx, 8",
+            "    mov rsi, rcx",
             "    mov r10, 1",
             "    mov rax, 25",
             "    syscall",
-            "    mov qword [rax], rsi",
+            "    sub rdx, 8",
+            "    mov qword [rax], rdx",
             "    add rax, 8",
             "    mov rsp, rbp",
             "    pop rbp",
@@ -583,10 +716,17 @@ class CodeGen:
             "exit_prog:",
             "    push rbp",
             "    mov rbp, rsp",
-            "    mov rax, 60",
-            "    syscall",
+            "    mov eax, 60",
+            "    syscall" 
+            ]
+
+        start_section = [
             "",
             "_start:",
+            "    mov rax, qword [rsp]",
+            "    mov qword [rel global_argc], rax",
+            "    lea rax, [rsp + 8]",
+            "    mov qword [rel global_argv], rax",
             "    push rbp",
             "    mov rbp, rsp",
             "    mov rdi, 11",
@@ -594,24 +734,20 @@ class CodeGen:
             "    mov rdx, 0",
             "    mov r10, 8",
             "    mov rax, 13",
-            "    syscall",
-            "    mov rax, qword [rbp +8]",
-            "    mov qword [rel global_argc], rax",
-            "    lea rax, [rbp + 16]",
-            "    mov qword [rel global_argv], rax",
+            "    syscall"
         ]
         
         footer = [
             "",
             "    mov rsp, rbp",
             "    pop rbp",
-            "    ; Exit program (Syscall 60)",
-            "    mov rax, 60",
-            "    mov rdi, 0",
+            "    ; Program Exit (Syscall 60)",
+            "    mov eax, 60",
+            "    xor edi, edi",
             "    syscall"
         ]
 
-        return "\n".join(data_code + header + self.assembly + footer)
+        return "\n".join(data_code + header + self.functions_code + start_section + self.assembly + footer)
         
     def get_new_label(self, base_name):
         self.label_count += 1
@@ -643,17 +779,171 @@ class CodeGen:
         return None
 
     def _get_obj_type(self, node):
+        if node is None:
+            return None
+
         node_class = type(node).__name__
+        eval_t = getattr(node, 'eval_type', None)
+
+        if eval_t and eval_t not in ('any', 'var', 'unknown', None):
+            return eval_t
+
         if node_class == 'VarAccessNode':
-            return self.get_var_type(node.var_name_tok[1])
+            var_name = node.var_name_tok[1]
+            vtype = self.get_var_type(var_name)
+            if not vtype and self.semantic_analyzer:
+                lookup_fn = getattr(self.semantic_analyzer, 'lookup_var_type', None)
+                if callable(lookup_fn):
+                    vtype = lookup_fn(var_name)
+            return vtype
+
         elif node_class == 'MemberAccessNode':
             parent_type = self._get_obj_type(node.left_node)
+            member_name = node.member_name_tok[1]
             if parent_type and parent_type in self.class_layouts:
-                field_info = self.class_layouts[parent_type]['layout'].get(node.member_name_tok[1])
+                field_info = self.class_layouts[parent_type]['layout'].get(member_name)
                 if field_info:
                     return field_info.get('type')
+
+        elif node_class == 'FuncCallNode':
+            func_name = node.node_to_call.var_name_tok[1]
+            ret_type = self.function_return_types.get(func_name)
+            if not ret_type and self.semantic_analyzer and hasattr(self.semantic_analyzer, 'functions'):
+                f_info = self.semantic_analyzer.functions.get(func_name)
+                if isinstance(f_info, dict):
+                    ret_type = f_info.get('return_type')
+            return ret_type
+
+        elif node_class == 'MethodCallNode':
+            parent_type = self._get_obj_type(node.left_node)
+            method_name = node.method_name_tok[1]
+            while parent_type:
+                ret_type = self.method_return_types.get((parent_type, method_name))
+                if ret_type:
+                    return ret_type
+                parent_info = self.class_layouts.get(parent_type)
+                parent_type = parent_info.get('parent') if parent_info else None
+
+        elif node_class == 'NewObjectNode':
+            c_name = node.class_name_tok[1]
+            return c_name
+
         return None
 
+    def _parse_format_string(self, raw_fmt):
+        """Splits the format text into static text ('TEXT') and dynamic fields ('PLACEHOLDER')."""
+        chunks = []
+        i = 0
+        n = len(raw_fmt)
+        current_text = ""
+
+        while i < n:
+            if raw_fmt[i] == '\\' and i + 1 < n and raw_fmt[i+1] in ('{', '}'):
+                current_text += raw_fmt[i + 1]
+                i += 2
+                continue
+
+            if raw_fmt[i] == '{':
+                if current_text:
+                    chunks.append(('TEXT', current_text))
+                    current_text = ""
+
+                i += 1
+                expr_parts = []
+                specifiers = []
+                depth = 1
+                inside_spec = False
+                current_buf = ""
+
+                while i < n and depth > 0:
+
+                    if raw_fmt[i] == '\\' and i + 1 < n and raw_fmt[i + 1] in ('{', '}'):
+                        current_buf += raw_fmt[i + 1]
+                        i += 2
+                        continue
+
+                    if raw_fmt[i] == '{':
+                        if i + 1 < n and raw_fmt[i + 1] == ':':
+                            if not inside_spec:
+                                expr_parts.append(current_buf.strip())
+                                inside_spec = True
+                            else:
+                                if current_buf.strip():
+                                    specifiers.append(current_buf.strip())
+                            current_buf = ""
+                            depth += 1
+                            i += 2  
+                            continue
+                        else:
+                            depth += 1
+                            current_buf += '{'
+                            i += 1
+                            continue
+
+                    elif raw_fmt[i] == '}':
+                        depth -= 1
+                        if depth == 0:
+                            if inside_spec:
+                                if current_buf.strip():
+                                    specifiers.append(current_buf.strip())
+                            else:
+                                expr_parts.append(current_buf.strip())
+                            current_buf = ""
+                        else:
+                            if inside_spec:
+                                if current_buf.strip():
+                                    specifiers.append(current_buf.strip())
+                                current_buf = ""
+                        i += 1
+                        continue
+
+                    else:
+                        current_buf += raw_fmt[i]
+                        i += 1
+
+                if depth != 0:
+                    raise Exception("Syntax Error: Unclosed '{' in format string.")
+
+                main_expr = expr_parts[0] if expr_parts else ""
+                chunks.append(('PLACEHOLDER', main_expr, specifiers))
+                continue
+
+            current_text += raw_fmt[i]
+            i += 1
+
+        if current_text:
+            chunks.append(('TEXT', current_text))
+
+        return chunks
+
+    def _build_placeholder_ast(self, expr_str, specifiers, pos_args, pos_idx):
+        """Turns the dynamic fields and pipeline functions into AST Nodes."""
+        from lexer import tokenize
+        from parser import Parser, FuncCallNode, VarAccessNode
+
+        if expr_str:
+            tokens = tokenize(expr_str)
+            p = Parser(tokens)
+            node = p.comp_expr()
+
+        else:
+            if pos_idx >= len(pos_args):
+                raise Exception("Compile Error: Not enough arguments provided for printf format.")
+            node = pos_args[pos_idx]
+            pos_idx += 1
+
+        builtin_shortcuts = {'x', 'X', 'd', 'i', 'f', 's', 'c'}
+        active_shortcuts = []
+
+        for spec in specifiers:
+            if spec in builtin_shortcuts:
+                active_shortcuts.append(spec)
+            else:
+                func_var_node = VarAccessNode(('IDENTIFIER', spec, 0, 0))
+                node = FuncCallNode(func_var_node, [node])
+
+        return node, active_shortcuts, pos_idx
+       
     def enter_scope(self):
         """Yeni bir { açıldığında yeni yerel kapsam (scope) yarat."""
         self.environments.append({})
@@ -682,6 +972,22 @@ class CodeGen:
 
         for c_name in class_nodes:
             register(c_name)
+
+        for node in node_list:
+            ntype = type(node).__name__
+            if ntype == 'FuncDefNode':
+                func_name = node.func_name_tok[1]
+                ret_tok = getattr(node, 'return_type_tok', None) or getattr(node, 'return_type', None) or getattr(node, 'ret_type', None)
+                ret_type = ret_tok[1] if isinstance(ret_tok, tuple) else (str(ret_tok) if ret_tok else 'unit')
+                self.function_return_types[func_name] = ret_type
+
+            elif ntype == 'ClassDefNode':
+                c_name = node.class_name_tok[1]
+                for method in node.methods:
+                    m_name = method.func_name_tok[1]
+                    ret_tok = getattr(method, 'return_type_tok', None) or getattr(method, 'return_type', None) or getattr(method, 'ret_type', None)
+                    m_ret = ret_tok[1] if isinstance(ret_tok, tuple) else (str(ret_tok) if ret_tok else 'unit')
+                    self.method_return_types[(c_name, m_name)] = m_ret
 
         for node in node_list:
             self.generate(node)
@@ -731,43 +1037,38 @@ class CodeGen:
         }
 
     def visit_NumberNode(self, node):
-        """Sayı görüldüğünde RAX yazmacına (register) yerleştir."""
+        """When visiting a number place it in the RAX register."""
         
         if node.tok[0] == 'FLOAT':
             self.assembly.append(f"    mov rax, __float64__({node.tok[1]})")       
         else:    
-            self.assembly.append(f"    mov rax, {node.tok[1]}")
+            num = int(node.tok[1])
+            if 0 <= num <= 2147483647:
+                self.assembly.append(f"    mov eax, {node.tok[1]}")
+            else:
+                self.assembly.append(f"    mov rax, {node.tok[1]}")
 
     def visit_IfNode(self, node):
         """if, butif ve else yapılarını JMP'e çevirir."""
         end_label = self.get_new_label("IF_END")
+        initial_offset = self.stack_offset
 
         for condition, block in node.cases:
             next_case_label = self.get_new_label("NEXT_CASE")
+            self.stack_offset = initial_offset
             
-            # 1. Koşulu hesapla. RAX'e 1 ya da 0 döner.
-            self.generate(condition)
-
-            # 2. Sonucu 0 ile karşılaştır.
-            self.assembly.append("    cmp rax, 0")
-
-            # 3. Sonuç False ise bloğun içini atla ve sıradaki duruma geç
-            self.assembly.append(f"    je {next_case_label}")
-
-            # 4. Sonuç True ise kodları Assembly'e çevir.
+            self.generate_branch(condition, next_case_label)
             self.generate(block)
-
-            # 5. Kodlar bittiğinde sona zıpla.
             self.assembly.append(f"    jmp {end_label}")
-
-            # 6. Sıradaki butif/else kontrolü için atlama etiketini buraya yerleştir.
             self.assembly.append(f"{next_case_label}:")
 
-        #Koşullar tutmazsa ve else bloğu varsa else'i çalıştır.
+        #Else Case
         if node.else_case:
+            self.stack_offset = initial_offset
             self.generate(node.else_case)
 
         # Herkesin sonda ulaştığı ortak zemin
+        self.stack_offset = initial_offset
         self.assembly.append(f"{end_label}:")
 
     def visit_WhileNode(self, node):
@@ -776,18 +1077,12 @@ class CodeGen:
         end_label = self.get_new_label("WHILE_END")
 
         self.loop_stack.append((start_label, end_label))
-
         self.assembly.append(f"{start_label}:")
 
-        self.generate(node.condition_node)
+        self.generate_branch(node.condition_node, end_label)
 
-        self.assembly.append("    cmp rax, 0")
-        self.assembly.append(f"    je {end_label}")
-
-        self.generate(node.body_node)
-        
+        self.generate(node.body_node)        
         self.assembly.append(f"    jmp {start_label}")
-
         self.assembly.append(f"{end_label}:")
 
         self.loop_stack.pop()
@@ -882,6 +1177,21 @@ class CodeGen:
         var_type = self.get_var_type(var_name)
         val_type = getattr(node.value_node, 'eval_type', 'int')
 
+        if var_type in ('str', 'string') or val_type in ('str', 'string'):
+            if op in ('+=', '=+'):
+                self.assembly.append("    push rax")     
+                self.assembly.append(f"    mov rax, {loc}")
+                self.assembly.append("    mov rdi, rax") 
+                self.assembly.append("    pop rsi")      
+                self.assembly.append("    call concat_strings")
+                self.assembly.append(f"    mov {loc}, rax")
+                return
+            elif op in ('='):
+                self.assembly.append(f"    mov {loc}, rax")
+                return
+            else:
+                raise Exception("Semantic Error: unsupported operation type on string value")
+
         if var_type in ('double', 'float') or val_type in ('double', 'float'):
             self.assembly.append("    movq xmm1, rax")        
             self.assembly.append(f"    mov rax, {loc}")       
@@ -940,7 +1250,6 @@ class CodeGen:
         exclude_label = self.get_new_label("EXCLUDE")
         final_label = self.get_new_label("FINAL")
         end_label = self.get_new_label("ATTEMPT_END")
-
         old_stack = self.stack_offset
 
         self.stack_offset += 8
@@ -980,22 +1289,24 @@ class CodeGen:
         self.assembly.append(f"    jmp {final_label}")
 
         self.assembly.append(f"{exclude_label}:")
+        # RAX içinde fırlatılan hata kodu var.
+        # Önce yığını temizleyip hizalayalım:
+        self.assembly.append("    mov rsp, rbp")
+        self.assembly.append("    sub rsp, 64")
 
         self.stack_offset = old_stack
-        # Eğer hata olduysa, Trigger Frame'i sökmüştür ve RAX içinde Hata Kodu vardır.
         if node.exclude_body:
             self.enter_scope()
-            self.stack_offset += 8
-            self.environments[-1]['err'] = self.stack_offset # 'err' adında yerel değişken yarat
-            self.assembly.append("    sub rsp, 8")
-            self.assembly.append(f"    mov qword [rbp - {self.stack_offset}], rax") # Hata kodunu 'err' içine koy
+            # 'err' değişkenini güvenli [rbp - 32] adresine koyup RAX'ı Doğrudan yazıyoruz!
+            self.stack_offset = 32
+            self.environments[-1]['err'] = self.stack_offset
+            self.assembly.append(f"    mov qword [rbp - {self.stack_offset}], rax")
             
             self.generate(node.exclude_body)
             self.exit_scope()
 
         else:
-            # Eğer programcı Exclude yazmadıysa, Final'i çalıştır ve Hatayı BUBBLE UP yap! (Geri Fırlat)
-            self.assembly.append("    push rax") # RAX'ı koru
+            self.assembly.append("    push rax") # Exclude bloğu yoksa hatayı koru
             if node.final_body:
                 self.generate(node.final_body)
             self.assembly.append("    pop rax")
@@ -1008,15 +1319,14 @@ class CodeGen:
             self.assembly.append("    mov rdx, qword [rbx + 16]")
             self.assembly.append("    mov rbp, qword [rbx + 8]")
             self.assembly.append("    mov rsp, qword [rbx]")
-            self.assembly.append("    jmp rdx") # Üstteki frame'e fırlat
+            self.assembly.append("    jmp rdx")
             
             self.assembly.append(f"{end_label}_crash:")
             self.assembly.append("    mov rdi, rax")
-            self.assembly.append("    mov rax, 60")
+            self.assembly.append("    mov eax, 60")
             self.assembly.append("    syscall")
             self.assembly.append(f"    jmp {end_label}")
 
-    # --- FINAL BODY ---
         self.assembly.append(f"{final_label}:")
         if node.final_body:
             self.generate(node.final_body)
@@ -1040,14 +1350,13 @@ class CodeGen:
 
         self.assembly.append(f"{crash_label}:")
         self.assembly.append("    mov rdi, rax") # RDI = Çıkış Kodu (Hata Kodu)
-        self.assembly.append("    mov rax, 60")  # sys_exit
+        self.assembly.append("    mov eax, 60")  # sys_exit
         self.assembly.append("    syscall")
 
     def visit_VarAssignNode(self, node):
-        """Değişkene değer atama."""
-
-        self.generate(node.value_node)
         var_name = node.var_name_tok[1]
+        
+        self.generate(node.value_node)
         current_env = self.environments[-1]
 
         if var_name not in current_env:
@@ -1056,14 +1365,14 @@ class CodeGen:
                 self.data_section.append(f"    {label} dq 0")
                 current_env[var_name] = label
             else:
-                self.stack_offset += 8 # 8 byte (64 bit) yer ayır
+                self.stack_offset += 8
                 current_env[var_name] = self.stack_offset
-                self.assembly.append("    sub rsp, 8") #Pointer'ı yukarı kaydır, RAM rezerve et.
+                self.assembly.append("    sub rsp, 8")
 
-        var_type = getattr(node, 'eval_type', None)
+        inferred_type = self._get_obj_type(node.value_node)
 
-        if var_type and var_type not in ('int', 'integer', 'double', 'float', 'bool', 'str', 'string', 'char', 'var', 'any'):
-            self.type_environments[-1][var_name] = var_type
+        if inferred_type and inferred_type not in ('int', 'integer', 'double', 'float', 'bool', 'str', 'string', 'char', 'var', 'any'):
+            self.type_environments[-1][var_name] = inferred_type
 
         loc = self.get_var_loc(var_name)
         self.assembly.append(f"    mov {loc}, rax")
@@ -1098,7 +1407,7 @@ class CodeGen:
                 self.assembly.append("    mov rdi, rax")
                 self.assembly.append("    pop rsi")
                 self.assembly.append("    call compare_strings") # RAM'deki yazıları karşılaştırır
-                self.assembly.append("    cmp rax, 0")
+                self.assembly.append("    test rax, rax")
 
                 if op in ('=?', '?=', 'is', 'same'): self.assembly.append("    sete al") 
                 elif op in ('!=', '=!'): self.assembly.append("    setne al") 
@@ -1108,7 +1417,7 @@ class CodeGen:
                 elif op in ('<=', '=<'): self.assembly.append("    setle al") 
                 self.assembly.append("    movzx rax, al")
             else:
-                raise Exception("Semantik Hata: Metinler (String) arasinda desteklenmeyen islem.")
+                raise Exception("Semantik Error: Unsupported operation between strings.")
                 
         elif op_type == 'double':
             # --- ONDALIKLI SAYI İŞLEMLERİ (FPU / XMM) ---
@@ -1214,7 +1523,7 @@ class CodeGen:
 
         if op == 'not':
             self.generate(node.node)
-            self.assembly.append("    cmp rax, 0")
+            self.assembly.append("    test rax, rax")
             self.assembly.append("    sete al")
             self.assembly.append("    movzx rax, al")
 
@@ -1233,10 +1542,10 @@ class CodeGen:
         elif op in ('await', 'wait'):
             self.generate(node.node)
             self.assembly.append("    mov rdi, rax") 
-            self.assembly.append("    mov rsi, 0")   
-            self.assembly.append("    mov rdx, 0")   
-            self.assembly.append("    mov r10, 0")   
-            self.assembly.append("    mov rax, 61")  
+            self.assembly.append("    xor esi, esi")   
+            self.assembly.append("    xor edx, edx")   
+            self.assembly.append("    xor r10d, r10d")   
+            self.assembly.append("    mov eax, 61")  
             self.assembly.append("    syscall")
 
     def visit_BlockNode(self, node):
@@ -1271,16 +1580,88 @@ class CodeGen:
                 self.assembly.append("    call print_float")
             elif arg_type == 'char':
                 self.assembly.append("    push rax")
-                self.assembly.append("    mov rsi, rsp") # Adres stack'in tepesi
-                self.assembly.append("    mov rdi, 1")   # stdout
-                self.assembly.append("    mov rdx, 1")   # Uzunluk 1 byte
-                self.assembly.append("    mov rax, 1")   # sys_write
+                self.assembly.append("    mov rsi, rsp") # Top of address stack
+                self.assembly.append("    mov edi, 1")   # stdout
+                self.assembly.append("    mov edx, 1")   # 1 byte length
+                self.assembly.append("    mov eax, 1")   # sys_write
                 self.assembly.append("    syscall")
                 self.assembly.append("    pop rax")
             else:
                 self.assembly.append("    call print_string")
             return
-            
+
+        elif func_name == 'printf':
+            if not node.arg_nodes:
+                return
+
+            fmt_node = node.arg_nodes[0]
+
+            if type(fmt_node).__name__ == 'StringNode':
+                raw_str = fmt_node.tok[1][1:-1]
+                chunks = self._parse_format_string(raw_str)
+                pos_args = node.arg_nodes[1:]
+                pos_idx = 0
+
+                from parser import StringNode
+
+                for chunk in chunks:
+                    if chunk[0] == 'TEXT':
+                        text_content = chunk[1]
+                        if text_content:
+                            str_node = StringNode(('', f'"{text_content}"', 0, 0))
+                            self.generate(str_node)
+                            self.assembly.append("    call print_string")
+                
+                    elif chunk[0] == 'PLACEHOLDER':
+                        _, expr_str, specifiers = chunk
+                        target_ast, shortcuts, pos_idx = self._build_placeholder_ast(expr_str, specifiers, pos_args, pos_idx)
+                    
+                        self.generate(target_ast)
+                        eval_type = getattr(target_ast, 'eval_type', None) or self._get_obj_type(target_ast) or 'int'
+
+
+                        if 'x' in shortcuts or 'X' in shortcuts or eval_type in ('hex', 'ptr', 'pointer', 'address'):
+                            self.assembly.append("    call print_hex")
+                        elif 'f' in shortcuts or eval_type in ('double', 'float'):
+                            self.assembly.append("    call print_float")
+                        elif 'd' in shortcuts or 'i' in shortcuts or eval_type in ('int', 'integer', 'bool', 'any', 'var'):
+                            self.assembly.append("    call print_int")
+                        elif eval_type == 'char':
+                            self.assembly.append("    push rax")
+                            self.assembly.append("    mov rsi, rsp")
+                            self.assembly.append("    mov edi, 1")
+                            self.assembly.append("    mov edx, 1")
+                            self.assembly.append("    mov eax, 1")
+                            self.assembly.append("    syscall")
+                            self.assembly.append("    pop rax")
+                        else:
+                            self.assembly.append("    call print_string")
+                return
+
+            else:
+                for arg in node.arg_nodes:
+                    self.generate(arg)
+                    eval_type = getattr(arg, 'eval_type', None) or self._get_obj_type(arg) or 'string'
+
+                    if eval_type in ('hex', 'ptr', 'pointer', 'address'):
+                        self.assembly.append("    call print_hex")
+                    elif eval_type in ('int', 'integer', 'bool'):
+                        self.assembly.append("    call print_int")
+                    elif eval_type in ('double', 'float'):
+                        self.assembly.append("    call print_float")
+                    elif eval_type == 'char':
+                        self.assembly.append("    push rax")
+                        self.assembly.append("    mov rsi, rsp")
+                        self.assembly.append("    mov edi, 1")
+                        self.assembly.append("    mov edx, 1")
+                        self.assembly.append("    mov eax, 1")
+                        self.assembly.append("    syscall")
+                        self.assembly.append("    pop rax")
+                    else:
+                        self.assembly.append("    call print_string")
+                return
+
+
         elif func_name == 'len':
             self.generate(node.arg_nodes[0]) # Parametreyi RAX'a al
             self.assembly.append("    mov rdi, rax")
@@ -1297,14 +1678,12 @@ class CodeGen:
             return
 
         elif func_name == 'type_of':
-            # Parametrenin AST node'unu al
+            # Take the AST node of the parameter
             arg_node = node.arg_nodes[0]
             
-            # Semantik analizörün yapıştırdığı 'eval_type' etiketini oku
+            # Read eval_type
             detected_type = getattr(arg_node, 'eval_type', 'unknown')
             
-            # Bu tipi sanki programcı String olarak yazmış gibi donanıma yolla (.data'ya kaydeder)
-            # Örneğin: type_of(3.14) yazarsa, derleyici bunu "double" stringi olarak koda gömer.
             from parser import StringNode
             type_str_node = StringNode(('', f'"{detected_type}"', 0, 0))
             self.visit_StringNode(type_str_node)
@@ -1351,11 +1730,25 @@ class CodeGen:
             self.assembly.append("    mov rax, qword [rbx + rax*8]")
             return
 
-        elif func_name == 'addr_of':
-            self.generate(node.arg_nodes[0])
+        elif func_name == 'get_mem':
+            self.generate(node.arg_nodes[1])  # offset -> RAX
+            self.assembly.append("    push rax")
+            self.generate(node.arg_nodes[0])  # ptr -> RAX
+            self.assembly.append("    mov rdi, rax")
+            self.assembly.append("    pop rsi")
+            self.assembly.append("    call get_mem")
             return
 
-        elif func_name == 'ptr_to':
+        elif func_name == 'get_mem32':
+            self.generate(node.arg_nodes[1])  # offset -> RAX
+            self.assembly.append("    push rax")
+            self.generate(node.arg_nodes[0])  # ptr -> RAX
+            self.assembly.append("    mov rdi, rax")
+            self.assembly.append("    pop rsi")
+            self.assembly.append("    call get_mem32")
+            return
+
+        elif func_name == 'addr_of' or func_name == 'ptr_to':
             self.generate(node.arg_nodes[0])
             return
         
@@ -1363,13 +1756,16 @@ class CodeGen:
             arg_count = len(node.arg_nodes)
             if arg_count > 7:
                 raise Exception("Compiling Error: syscall can take 7 arguments max (rax, rdi, rsi, rdx, r10, r8, r9)")
+            arg_registers = ['rax', 'rdi', 'rsi', 'rdx', 'r10', 'r8', 'r9']
+
             for arg in node.arg_nodes:
                 self.generate(arg)
                 self.assembly.append("    push rax")
-            arg_registers = ['rax', 'rdi', 'rsi', 'rdx', 'r10', 'r8', 'r9']
-            for i in range(arg_count - 1, -1, -1):
-                self.assembly.append(f"    pop {arg_registers[i]}")
-                
+
+            for i in range(arg_count-1 , -1, -1):
+                target_reg = arg_registers[i]
+                self.assembly.append(f"    pop {target_reg}")
+
             self.assembly.append("    syscall")
             return
 
@@ -1383,9 +1779,13 @@ class CodeGen:
 
         # x86-64 Standart Parametre Yazmaçları 
         arg_registers = ['rdi', 'rsi', 'rdx', 'rcx', 'r8', 'r9']
+
         for i in range(min(6, arg_count)):
             self.generate(node.arg_nodes[i])
-            self.assembly.append(f"    mov {arg_registers[i]}, rax")
+            self.assembly.append(f"    push rax")
+
+        for i in range(min(6, arg_count)-1, -1, -1):
+            self.assembly.append(f"    pop {arg_registers[i]}") 
 
         loc = self.get_var_loc(func_name)
         if loc is not None:
@@ -1402,15 +1802,19 @@ class CodeGen:
         """Yeni fonksiyon oluştur ve Scope ayarlarını yap."""
         if node.modifier_tok and node.modifier_tok[1] == 'extern':
             func_name = node.func_name_tok[1]
-            self.assembly.append(f"extern {func_name}")
+            self.data_section.append(f"; extern {func_name}")
             return
 
         func_name = node.func_name_tok[1]
-        after_label = self.get_new_label(f"AFTER_FUNC_{func_name}")
+        exit_label = f"exit_func_{func_name}"
 
-        self.assembly.append(f"    jmp {after_label}")
+        main_assembly = self.assembly
+        self.assembly = self.functions_code
 
-        self.assembly.append(f"{func_name}:")
+        old_exit_label = self.current_func_exit_label
+        self.current_func_exit_label = exit_label
+        self.assembly.append("")
+        self.assembly.append(f"{func_name}")
         self.assembly.append("    push rbp")
         self.assembly.append("    mov rbp, rsp")
 
@@ -1419,7 +1823,7 @@ class CodeGen:
         if is_async:
             self.assembly.append("    mov rax, 57")
             self.assembly.append("    syscall")
-            self.assembly.append("    cmp rax, 0")
+            self.assembly.append("    test rax, rax")
 
             parent_label = self.get_new_label(f"ASYNC_PARENT_{func_name}")
             self.assembly.append(f"    jne {parent_label}")
@@ -1450,9 +1854,10 @@ class CodeGen:
         self.exit_scope()
         self.stack_offset = old_stack_offset
 
+        self.assembly.append(f"{exit_label}:")
         if is_async:
             self.assembly.append("    mov rdi, 0")
-            self.assembly.append("    mov rax, 60") # sys_exit
+            self.assembly.append("    mov eax, 60") # sys_exit
             self.assembly.append("    syscall")
             self.assembly.append(f"{parent_label}:")
             self.assembly.append("    mov rsp, rbp")
@@ -1463,14 +1868,20 @@ class CodeGen:
             self.assembly.append("    pop rbp")
             self.assembly.append("    ret")
 
-        self.assembly.append(f"{after_label}:")
+        self.current_func_exit_label = old_exit_label
+        self.assembly = main_assembly
 
     def visit_AnFuncNode(self, node):
         func_lbl = self.get_new_label("ANON_FUNC")
-        after_lbl = self.get_new_label("AFTER_ANON_FUNC")
+        exit_lbl = f".exit_{func_lbl}"
+
+        main_assembly = self.assembly
+        self.assembly = self.functions_code
+
+        old_exit_label = self.current_func_exit_label
+        self.current_func_exit_label = exit_lbl
         
-        self.assembly.append(f"    jmp {after_lbl}")
-        
+        self.assembly.append("")
         self.assembly.append(f"{func_lbl}:")
         self.assembly.append("    push rbp")
         self.assembly.append("    mov rbp, rsp")
@@ -1497,12 +1908,14 @@ class CodeGen:
         
         self.exit_scope()
         self.stack_offset = old_stack
-        
+
+        self.assembly.append(f"{exit_lbl}:")
         self.assembly.append("    mov rsp, rbp")
         self.assembly.append("    pop rbp")
         self.assembly.append("    ret")
         
-        self.assembly.append(f"{after_lbl}:")
+        self.current_func_exit_label = old_exit_label
+        self.assembly = main_assembly
         
         self.assembly.append(f"    lea rax, [rel {func_lbl}]")
 
@@ -1511,9 +1924,12 @@ class CodeGen:
         if node.node_to_return:
             self.generate(node.node_to_return)
 
-        self.assembly.append("    mov rsp, rbp")
-        self.assembly.append("    pop rbp")
-        self.assembly.append("    ret")
+        if self.current_func_exit_label:
+            self.assembly.append(f"    jmp {self.current_func_exit_label}")
+        else:
+            self.assembly.append("    mov rsp, rbp")
+            self.assembly.append("    pop rbp")
+            self.assembly.append("    ret")
 
     def visit_StringNode(self, node):
         """Metin verisini .data olarak yazar ve adresi RAX'e koyar."""
@@ -1529,9 +1945,15 @@ class CodeGen:
 
     def visit_SyncUnitNode(self, node):
         unit_name = node.unit_name_tok[1]
-        after_label = self.get_new_label(f"AFTER_UNIT_{unit_name}")
+        exit_lbl = f".exit_unit_{unit_name}"
+
+        main_assembly = self.assembly
+        self.assembly = self.functions_code
+
+        old_exit_label = self.current_func_exit_label
+        self.current_func_exit_label = exit_lbl
         
-        self.assembly.append(f"    jmp {after_label}")
+        self.assembly.append("")
         self.assembly.append(f"unit_{unit_name}:")
         self.assembly.append("    push rbp")
         self.assembly.append("    mov rbp, rsp")
@@ -1539,26 +1961,29 @@ class CodeGen:
         self.enter_scope()
         self.generate(node.body_node)
         self.exit_scope()
-        
+
+        self.assembly.append(f"{exit_lbl}:")
         self.assembly.append("    mov rsp, rbp")
         self.assembly.append("    pop rbp")
         self.assembly.append("    ret")
-        self.assembly.append(f"{after_label}:")
+
+        self.current_func_exit_label = old_exit_label
+        self.assembly = main_assembly
 
     def visit_WithNode(self, node):
         unit_name = node.unit_name_tok[1]
         if not node.is_wait:
-            self.assembly.append("    mov rax, 57") 
+            self.assembly.append("    mov eax, 57") 
             self.assembly.append("    syscall")
-            self.assembly.append("    cmp rax, 0")
+            self.assembly.append("    test rax, rax")
             parent_lbl = self.get_new_label("WITH_PARENT")
             self.assembly.append(f"    jne {parent_lbl}") 
 
             self.assembly.append(f"    call unit_{unit_name}")
             self.generate(node.body_node)
 
-            self.assembly.append("    mov rax, 60")
-            self.assembly.append("    mov rdi, 0")
+            self.assembly.append("    mov eax, 60")
+            self.assembly.append("    xor edi, edi")
             self.assembly.append("    syscall")
             
             self.assembly.append(f"{parent_lbl}:")
@@ -1572,15 +1997,13 @@ class CodeGen:
         val = node.tok[1]
         if val == 'true':
             self.assembly.append("    mov rax, 1")
-        elif val == 'false':
-            self.assembly.append("    mov rax, 0")
-        elif val == 'null':
-            self.assembly.append("    mov rax, 0")
+        elif val in ('false', 'null'):
+            self.assembly.append("    xor eax, eax")
 
     def visit_WhenNode(self, node):
-        self.assembly.append("    mov rax, 57") 
+        self.assembly.append("    mov eax, 57") 
         self.assembly.append("    syscall")
-        self.assembly.append("    cmp rax, 0")
+        self.assembly.append("    test rax, rax")
 
         parent_lbl = self.get_new_label("WHEN_PARENT")
         self.assembly.append(f"    jne {parent_lbl}")
@@ -1592,19 +2015,19 @@ class CodeGen:
         self.assembly.append("    mov qword [rsp], 0")          
         self.assembly.append("    mov qword [rsp+8], 10000000") 
         self.assembly.append("    mov rdi, rsp")
-        self.assembly.append("    mov rsi, 0")
-        self.assembly.append("    mov rax, 35") 
+        self.assembly.append("    xor esi, esi")
+        self.assembly.append("    mov eax, 35") 
         self.assembly.append("    syscall")
         self.assembly.append("    add rsp, 16")
 
         self.generate(node.condition)
-        self.assembly.append("    cmp rax, 0")
+        self.assembly.append("    test rax, rax")
         self.assembly.append(f"    je {loop_lbl}")
 
         self.generate(node.body)
         
-        self.assembly.append("    mov rax, 60")
-        self.assembly.append("    mov rdi, 0")
+        self.assembly.append("    mov eax, 60")
+        self.assembly.append("    xor edi, edi")
         self.assembly.append("    syscall")
         
         self.assembly.append(f"{parent_lbl}:")
@@ -1624,31 +2047,32 @@ class CodeGen:
         self.assembly.append("    cmp rbx, 0")
         self.assembly.append(f"    jl {bounds_fail}") 
 
-        self.assembly.append("    mov rcx, qword [rax - 8]")
-        if eval_type != 'char':
-            self.assembly.append("    shr rcx, 3") # 8'e bölerek eleman sayısını bul
-            
-        self.assembly.append("    cmp rbx, rcx")
-        self.assembly.append(f"    jge {bounds_fail}") # Index >= Boyut ise hata
-        self.assembly.append(f"    jmp {bounds_ok}")
+        if eval_type == 'char':
+            self.assembly.append(f"    jmp {bounds_ok}")
+        else:   
+            self.assembly.append("    mov rcx, qword [rax -8]")
+            self.assembly.append("    shr rcx, 3")
+            self.assembly.append("    cmp rbx, rcx")
+            self.assembly.append(f"    jge {bounds_fail}") # Fail if Index >= Size
+            self.assembly.append(f"    jmp {bounds_ok}")
 
         self.assembly.append(f"{bounds_fail}:")
-        self.assembly.append("    mov rax, 99") # OUT OF BOUNDS Hata Kodu
+        self.assembly.append("    mov eax, 99") # OUT OF BOUNDS
         self.assembly.append("    mov rbx, qword [rel global_err_frame]")
         self.assembly.append("    cmp rbx, 0")
         crash_lbl = self.get_new_label("CRASH")
-        self.assembly.append(f"    je {crash_lbl}") # Catch yedeği yoksa Crash!
+        self.assembly.append(f"    je {crash_lbl}") # Crash if no catch backup
         self.assembly.append("    mov rcx, qword [rbx + 24]")
         self.assembly.append("    mov qword [rel global_err_frame], rcx")
         self.assembly.append("    mov rdx, qword [rbx + 16]")
         self.assembly.append("    mov rbp, qword [rbx + 8]")
         self.assembly.append("    mov rsp, qword [rbx]")
-        self.assembly.append("    jmp rdx") # Exclude bloğuna uç!
+        self.assembly.append("    jmp rdx") # Go to exclude
         
         self.assembly.append(f"{crash_lbl}:")
         self.assembly.append("    mov rdi, rax")
-        self.assembly.append("    mov rax, 60")
-        self.assembly.append("    syscall") # Çöküş!
+        self.assembly.append("    mov eax, 60")
+        self.assembly.append("    syscall") # Crash
 
         self.assembly.append(f"{bounds_ok}:")
 
@@ -1678,17 +2102,18 @@ class CodeGen:
         
         self.assembly.append("    cmp rbx, 0")
         self.assembly.append(f"    jl {bounds_fail}") 
-        
-        self.assembly.append("    mov r8, qword [rax - 8]") 
-        if eval_type != 'char':
+         
+        if eval_type == 'char':
+            self.assembly.append(f"    jmp {bounds_ok}")
+        else:
+            self.assembly.append("    mov r8, qword [rax -8]")
             self.assembly.append("    shr r8, 3") 
-            
-        self.assembly.append("    cmp rbx, r8")
-        self.assembly.append(f"    jge {bounds_fail}") 
-        self.assembly.append(f"    jmp {bounds_ok}")
+            self.assembly.append("    cmp rbx, r8")
+            self.assembly.append(f"    jge {bounds_fail}") 
+            self.assembly.append(f"    jmp {bounds_ok}")
 
         self.assembly.append(f"{bounds_fail}:")
-        self.assembly.append("    mov rax, 99") # OUT OF BOUNDS Hata Kodu
+        self.assembly.append("    mov eax, 99") # OUT OF BOUNDS
         self.assembly.append("    mov rbx, qword [rel global_err_frame]")
         self.assembly.append("    cmp rbx, 0")
         crash_lbl = self.get_new_label("CRASH")
@@ -1702,7 +2127,7 @@ class CodeGen:
         
         self.assembly.append(f"{crash_lbl}:")
         self.assembly.append("    mov rdi, rax")
-        self.assembly.append("    mov rax, 60")
+        self.assembly.append("    mov eax, 60")
         self.assembly.append("    syscall") 
 
         self.assembly.append(f"{bounds_ok}:")
@@ -1714,7 +2139,7 @@ class CodeGen:
             if op == '=':
                 self.assembly.append("    mov byte [rax + rbx], cl") # Sadece tek byte (cl) yaz
             else:
-                raise Exception("Semantik Hata: String karakterleri uzerinde sadece '=' islemi yapilabilir.")
+                raise Exception("Semantik Error: Invalid operation type on chars.")
         else:
             self.assembly.append("    shl rbx, 3") # Index * 8 yap (Pointer Aritmetiği)
             if op == '=':
@@ -1774,20 +2199,21 @@ class CodeGen:
         self.current_class = None
 
     def visit_MemberAccessNode(self, node):
-        """nesne.alan okuması yapar """
+        field_name = node.member_name_tok[1]
         obj_type = self._get_obj_type(node.left_node)
 
         if not obj_type or obj_type == 'var':
-            raise Exception(f"Compiling Error: Unknown Class for Variable")
-                
-        field_name = node.member_name_tok[1]
-        field_info = self.class_layouts[obj_type]['layout'].get(field_name)
+            raise Exception(f"Compiling Error: Unknown Class for Variable (Accessing field '{field_name}')")
 
+        if obj_type not in self.class_layouts:
+            raise Exception(f"Compiling Error: Class '{obj_type}' is not defined.")
+
+        field_info = self.class_layouts[obj_type]['layout'].get(field_name)
         if not field_info:
+            if field_name in self.class_layouts[obj_type]['methods']:
+                line_num = node.member_name_tok[2] if len(node.member_name_tok) > 2 else 'Unknown'
+                raise Exception(f"Syntax Error: '{field_name}' is a method of '{obj_type}', but accessed as a property at Line: {line_num}.")
             raise Exception(f"Compiling Error: Class '{obj_type}' has no properties specified as: '{field_name}'")
-        
-        if field_info['modifier'] == 'private' and self.current_class != obj_type:
-            raise Exception(f"Access Violation: '{field_name}' is private")
 
         offset = field_info['offset']
         self.generate(node.left_node)
@@ -1865,7 +2291,7 @@ class CodeGen:
         class_name = node.class_name_tok[1]
 
         if class_name not in self.class_layouts:
-            raise Exception(f"Derleme Hatası: '{class_name}' adında bir sınıf tanımlanmamış.")
+            raise Exception(f"Compiling Error: '{class_name}' is not defined.")
         
         class_size = self.class_layouts[class_name]['size']
 
@@ -1893,7 +2319,10 @@ class CodeGen:
 
             for i in range(min(5, len(node.arg_nodes))):
                 self.generate(node.arg_nodes[i])
-                self.assembly.append(f"    mov {arg_registers[i+1]}, rax")
+                self.assembly.append(f"    push rax")
+
+            for i in range(min(5, len(node.arg_nodes)) - 1, -1, -1):
+                self.assembly.append(f"    pop {arg_registers[i+1]}")
 
             self.assembly.append("    mov rdi, qword [rsp]")
             self.assembly.append(f"    call {method_name}")
@@ -1907,12 +2336,18 @@ class CodeGen:
     def visit_MethodDefNode(self, node):
         """Sınıf içine yazılmış bir metodu Assembly'e çevirir."""
         if not self.current_class:
-            raise Exception("Derleme Hatası: Metotlar sadece class içinde tanımlanabilir.")
+            raise Exception("Compiling Error: Methods can only be defined in a class.")
         
         func_name = f"{self.current_class}_{node.func_name_tok[1]}"
-        after_label = self.get_new_label(f"AFTER_METHOD_{func_name}")
+        exit_label = f"exit_func_{func_name}"
 
-        self.assembly.append(f"    jmp {after_label}")
+        main_assembly = self.assembly
+        self.assembly = self.functions_code
+
+        old_exit_label = self.current_func_exit_label
+        self.current_func_exit_label = exit_label
+
+        self.assembly.append("")
         self.assembly.append(f"{func_name}:")
         self.assembly.append("    push rbp")
         self.assembly.append("    mov rbp, rsp")
@@ -1937,10 +2372,9 @@ class CodeGen:
             self.stack_offset += 8
             current_env[arg_name] = self.stack_offset
             type_env[arg_name] = arg_type[1]
-            self.assembly.append("    sub rsp, 8")
 
             reg_index = i + 1 
-            
+            self.assembly.append("    sub rsp, 8")
             if reg_index < 6:
                 self.assembly.append(f"    mov qword [rbp - {self.stack_offset}], {arg_registers[reg_index]}")
             else:
@@ -1953,10 +2387,13 @@ class CodeGen:
         self.exit_scope()
         self.stack_offset = old_stack_offset
 
+        self.assembly.append(f"{exit_label}:")
         self.assembly.append("    mov rsp, rbp")
         self.assembly.append("    pop rbp")
         self.assembly.append("    ret")
-        self.assembly.append(f"{after_label}:")
+
+        self.current_func_exit_label = old_exit_label
+        self.assembly = main_assembly
 
     def visit_MethodCallNode(self, node):
         """nesne.metot() çağrısını Assembly'e çevirir ve pointer'ı gizlice yollar."""
@@ -1985,11 +2422,15 @@ class CodeGen:
 
         for i in range(min(5, len(node.arg_nodes))):
             self.generate(node.arg_nodes[i])
-            self.assembly.append(f"    mov {arg_registers[i+1]}, rax")
+            self.assembly.append(f"    push rax")
 
         self.generate(node.left_node)
-        self.assembly.append("    mov rdi, rax")
+        self.assembly.append("    push rax")
 
+        self.assembly.append("    pop rdi")
+        for i in range(min(5, len(node.arg_nodes)) - 1, -1, -1):
+            self.assembly.append(f"    pop {arg_registers[i+1]}")
+        
         self.assembly.append(f"    call {method_name}")
 
         extra_args = max(0, arg_count - 6)
@@ -1997,11 +2438,11 @@ class CodeGen:
             self.assembly.append(f"    add rsp, {extra_args * 8}")
 
     def visit_ArrayLiteralNode(self, node):
-        """Array Literal'ı otomatik olarak alloc ve ardışık mov işlemlerine çevirir."""
+        """Turns the Array Literal into alloc and mov operations."""
         element_count = len(node.elements)
-        alloc_size = max(element_count * 8, 8)
+        alloc_size = max((element_count + 1) * 8, 16)
 
-        self.assembly.append(f"    mov rax, {alloc_size}")
+        self.assembly.append(f"    mov eax, {alloc_size}")
         self.assembly.append("    mov rdi, rax")
         self.assembly.append("    call alloc")
 
@@ -2015,6 +2456,10 @@ class CodeGen:
 
             offset = i * 8
             self.assembly.append(f"    mov qword [rbx + {offset}], rcx")
+
+        null_offset = element_count * 8
+        self.assembly.append("    mov rbx, qword [rsp]")
+        self.assembly.append(f"    mov qword [rbx + {null_offset}], 0")
 
         self.assembly.append("    pop rax")
 
@@ -2083,9 +2528,9 @@ class CodeGen:
                 self.assembly.append("    setne al")
                 self.assembly.append("    movzx rax, al")
             elif source_type == 'null':
-                self.assembly.append("    mov rax, 0")
+                self.assembly.append("    xor eax, eax")
             else: 
-                self.assembly.append("    cmp rax, 0")
+                self.assembly.append("    test rax, rax")
                 self.assembly.append("    setne al")
                 self.assembly.append("    movzx rax, al")
 
@@ -2101,14 +2546,9 @@ class CodeGen:
             self.assembly.append("    movq xmm0, rax")
             self.assembly.append("    cvttsd2si rax, xmm0")
             
-       
         elif target_type == 'char' and source_type in ('str', 'string', 'any'):
-            self.assembly.append("    movzx rax, byte [rax] ; String'in ilk karakterini al (ASCII int olarak)")
-            
-        
-        elif target_type not in ('int', 'integer', 'double', 'float', 'bool', 'str', 'string', 'char'):
-            pass
-
+            self.assembly.append("    movzx rax, byte [rax]")
+                    
     def visit_DeleteNode(self, node):
         self.generate(node.target_node)
         self.assembly.append("    mov rdi, rax")
@@ -2116,12 +2556,12 @@ class CodeGen:
 
     def visit_AllegeNode(self, node):
         self.generate(node.condition)
-        self.assembly.append("    cmp rax, 0")
+        self.assembly.append("    test rax, rax")
         
         ok_lbl = self.get_new_label("ALLEGE_OK")
         self.assembly.append(f"    jne {ok_lbl}")
 
-        self.assembly.append("    mov rax, 1") # Allege Error Code (1)
+        self.assembly.append("    mov eax, 1") # Allege Error Code (1)
         self.assembly.append("    mov rbx, qword [rel global_err_frame]")
         self.assembly.append("    cmp rbx, 0")
         crash_lbl = self.get_new_label("CRASH")
@@ -2135,7 +2575,7 @@ class CodeGen:
         
         self.assembly.append(f"{crash_lbl}:")
         self.assembly.append("    mov rdi, rax")
-        self.assembly.append("    mov rax, 60")
+        self.assembly.append("    mov eax, 60")
         self.assembly.append("    syscall") 
         
         self.assembly.append(f"{ok_lbl}:")
@@ -2153,7 +2593,7 @@ class CodeGen:
         ok_lbl = self.get_new_label("LIMITS_OK")
         self.assembly.append("    cmp rcx, 0")
         self.assembly.append(f"    jg {ok_lbl}")
-        self.assembly.append("    mov rcx, 1")
+        self.assembly.append("    mov ecx, 1")
         self.assembly.append(f"{ok_lbl}:")
         self.assembly.append("    push rax") 
         self.assembly.append("    push rcx")
@@ -2166,7 +2606,8 @@ class CodeGen:
         self.assembly.append("    pop rcx") 
         self.assembly.append("    pop rax")
 
-        self.assembly.append("    mov r9, 0") 
+        xor_r9 = "    xor r9d, r9d"
+        self.assembly.append(xor_r9)
         loop_start = self.get_new_label("LIMITS_LOOP")
         loop_end = self.get_new_label("LIMITS_END")
 
@@ -2184,13 +2625,13 @@ class CodeGen:
 
     def visit_BreakNode(self, node):
         if not self.loop_stack:
-            raise Exception("Semantik Hata: 'break' sadece bir döngü icinde kullanilabilir.")
+            raise Exception("Semantic Error: 'break' can only be used in a loop.")
         _, end_label = self.loop_stack[-1]
         self.assembly.append(f"    jmp {end_label}")
 
     def visit_GoonNode(self, node):
         if not self.loop_stack:
-            raise Exception("Semantik Hata: 'goon' sadece bir döngü icinde kullanilabilir.")
+            raise Exception("Semantic Error: 'goon' can only be used in a loop.")
         continue_label, _ = self.loop_stack[-1]
         self.assembly.append(f"    jmp {continue_label}")
 
@@ -2200,42 +2641,26 @@ if __name__ == '__main__':
     from semantic import SemanticAnalyzer
 
     test_code = """
-    // --- 1. UNIFIED PRINT TEST ---
-    var sayi = 42;
-    var ondalik = 3.14;
-    var dogru_mu = true;
-    var metin = "Wrench";
-
-    print("--- 1. AKILLI PRINT TESTI ---\\n");
-    print("Sayi: ");
-    print(sayi); // Otomatik olarak print_int'e yonlenecek
-    
-    print("\\nOndalik: ");
-    print(ondalik); // Otomatik olarak print_float'a yonlenecek
-    
-    print("\\nBool (1/0): ");
-    print(dogru_mu); // bool oldugu icin integer 1/0 olarak basilacak
-    
-    print("\\nString: ");
-    print(metin);
-    
-    print("\\nChar (metin[0]): ");
-    print(metin[0]); // 'W' karakterini inline syscall ile basacak
-    print("\\n\\n");
-
-    // --- 2. ANFUNC (ANONIM) CAGRI TESTI ---
-    print("--- 2. ANFUNC (ANONIM) CAGRI TESTI ---\\n");
-    
-    var topla = anfunc(int a, int b) {
+    // --- 1. SERBEST (CLASS-BAĞIMSIZ) FONKSİYON TESTİ ---
+    define topla(int a, int b) -> int {
         return a + b;
-    };
-    
-    // Fonksiyon pointer'i (topla) uzerinden dinamik cagri yapiliyor!
-    var sonuc = topla(15, 25);
-    
-    print("Anonim Fonksiyon Sonucu (40 olmali): ");
-    print(sonuc);
-    print("\\n--- TEST BITTI ---\\n");
+    }
+
+    // --- 2. CLASS VE METOT TESTİ ---
+    class Matematik {
+        define carp(int x, int y) -> int {
+            return x * y;
+        }
+    }
+
+    var mat = new Matematik();
+
+    print("Serbest topla(12, 28): ");
+    print(topla(12, 28)); // 40 basmalı
+
+    print("\\nMetod carp(6, 7): ");
+    print(mat.carp(6, 7)); // 42 basmalı
+    print("\\n");
     """
 
     #1. FRONTEND
@@ -2247,7 +2672,7 @@ if __name__ == '__main__':
     semantic_analyzer = SemanticAnalyzer(strict_mode=True)
     semantic_analyzer.analyze(ast)
 
-    compiler = CodeGen()
+    compiler = CodeGen(semantic_analyzer=semantic_analyzer)
     compiler.generate(ast)
     asm_code = compiler.get_code()
 

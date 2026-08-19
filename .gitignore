@@ -1,3 +1,12 @@
 __pycache__/
 *.pyc
 test/
+std.txt
+Devnotes.txt
+Devnotes.md
+*.asm
+*.o
+todo.txt
+*.txt
+!**/_sources/*.rst.txt
+docs/

@@ -1,0 +1,287 @@
+WRENCH PUBLIC LICENSE (WPL)
+Version 1.0
+
+Copyright (C) 2026 <Hayrettin Bugra Arslan>
+Everyone is permitted to copy and distribute verbatim copies of this license document.
+
+===============================================================================
+
+SECTION 0: DEFINITIONS AND SCOPE OF APPLICATION
+
+0.1 Definitions
+
+For the purposes of this license:
+
+"License" means this document.
+
+"Toolchain", "Program" or "Covered Software" refers to the Wrench compiler, 
+assembler, linker, driver, runtime environment, standard libraries, and 
+associated utility software distributed under this License.
+
+"Source Code" means the preferred form of the Toolchain for making modifications 
+to it, including source files, header files, build scripts, and interface 
+definition files.
+
+"Contributor" means each individual or legal entity that creates, contributes 
+to the creation of, or owns the Covered Software.
+
+"Contribution" means Covered Software of a particular Contributor.
+
+"Secondary License" means either the GNU General Public License, Version 2.0, 
+the GNU Lesser General Public License, Version 2.1, the GNU Affero General 
+Public License, Version 3.0, Mozilla Public License 2.0, or any later versions 
+of those licenses.
+
+"Modification" means any alteration, addition, or deletion made to existing 
+files of the Toolchain’s Source Code, or any work containing portions of 
+existing Toolchain files.
+
+"Independent Work" or "Independent Module" means any separate source code file 
+or module that does not contain, derive from, or modify existing files of the 
+Toolchain, even if designed to interact or interoperate with the Toolchain.
+
+"Generated Output" or "Output" refers to any executable, binary, object code, 
+assembly text, or application data produced by running the Toolchain on 
+user-supplied code, including any static or dynamic runtime library code 
+embedded into or linked with such output.
+
+"You" (or "Licensee") means an individual or legal entity exercising rights 
+granted under this License.
+
+0.2 Scope of Application
+
+This License applies to any software component that contains a notice placed 
+by the copyright holder stating that it may be distributed under the terms of 
+this Wrench Public License (WPL). The act of running the Toolchain is not 
+restricted. This License explicitly does not claim ownership or impose 
+restrictions on the Generated Output, except as specifically provided under 
+the Conditional Attribution terms in Section 3 of this License.
+
+
+SECTION 1: BASIC RIGHTS AND SCOPE OF GRANTS
+
+1.1 Copyright Grant
+
+Subject to the terms and conditions of this License, each Contributor hereby 
+grants to You a world-wide, royalty-free, non-exclusive license under its 
+copyright interests to:
+
+    a) Reproduce, display, perform, sublicense, and distribute the Covered 
+       Software, with or without Modifications, either as source code or as 
+       executable binaries.
+
+    b) Prepare derivative works based on the Covered Software by modifying, 
+       adapting, or translating existing files.
+
+    c) Execute and run the Toolchain for any purpose, without limitation or fee.
+
+1.2 Patent Grant
+
+Each Contributor hereby grants to You a world-wide, royalty-free, non-exclusive 
+patent license under its Patent Claims to make, use, sell, offer for sale, 
+import, and otherwise transfer their Contribution and Covered Software.
+
+1.3 Freedom to Execute
+
+The act of running the Program or Toolchain to compile, assemble, link, or 
+analyze source code is entirely unrestricted. Executing the Toolchain does not 
+impose any restrictions on the input source code provided by You, nor does it 
+automatically subject Your input code to this License.
+
+1.4 Limitations of Grant
+
+Except for the rights expressly granted in Sections 1.1 and 1.2, no other 
+rights, express or implied, are granted under this License. All rights, title, 
+and interest in and to the Covered Software remain with the respective 
+Contributors.
+
+
+SECTION 2: DISTRIBUTION AND FILE-LEVEL COPYLEFT OBLIGATIONS
+
+2.1 Source Code Availability
+
+All Covered Software distributed by You must be made available in source code 
+form under the terms of this License. You must inform recipients how they can 
+obtain such source code at no additional charge (e.g., via a publicly accessible 
+repository or downloadable link).
+
+2.2 File-Level Copyleft
+
+Any modification to an existing file within the Covered Software constitutes a 
+derivative file and must remain licensed under this License. You may not 
+impose any further restrictions on the exercise of the rights granted under 
+this License to recipients.
+
+2.3 Prominent Notices
+
+You must cause any modified files to carry prominent notices stating that You 
+changed the files, along with the date and description of any change. You must 
+retain all pre-existing copyright, patent, trademark, and disclaimer notices in 
+the files.
+
+2.4 Larger Works and Independent Modules
+
+You may create and distribute a Larger Work by combining Covered Software with 
+Independent Work(s) within a single package or repository. In such event, the 
+copyleft requirements of this License apply strictly to the Covered Software 
+files and do not extend to the Independent Work files. Independent Works may 
+be licensed and distributed under terms of Your choosing, including 
+proprietary terms.
+
+2.5 Secondary License Compatibility
+
+If a portion of Covered Software is explicitly designated by the initial 
+Contributor as compatible with a Secondary License, You may distribute that 
+designated portion under the terms of such Secondary License in addition to 
+or in place of this License.
+
+
+SECTION 3: GENERATED OUTPUT AND CONDITIONAL ATTRIBUTION OBLIGATIONS
+
+3.1 Ownership and Freedom of Generated Output
+
+You retain full ownership, copyright, and licensing rights over any Generated 
+Output produced by the Toolchain. The copyleft and source code disclosure 
+obligations of Section 2 do not apply to Generated Output. You may freely 
+monetize, sell, distribute, or license Your Generated Output under any terms of 
+Your choosing, including proprietary or closed-source licenses.
+
+3.2 Non-Commercial and Open-Source Exemption
+
+If Your Generated Output is distributed free of charge, as non-commercial 
+software, or under an Open Source Initiative (OSI)-approved open-source license, 
+You are not required to display mandatory attribution notices, though voluntary 
+attribution is encouraged.
+
+3.3 Conditional Attribution Requirement
+
+If Your Generated Output (or software containing/embedding Generated Output) is 
+distributed for commercial purposes or as closed-source / proprietary software, 
+You must ensure that clear attribution is provided to end-users acknowledging 
+the use of the Toolchain.
+
+3.4 Required Forms of Attribution
+
+Where attribution is required under Section 3.3, You must prominently include 
+the statement "Built with Wrench Toolchain" (or an equivalent clear notice in 
+the primary language of the application) in all of the following locations 
+that are applicable to Your distribution:
+
+    a) User Interface / Command Line: Within the application's --version output, 
+       --help command, "About" dialog, or visible credits screen accessible to 
+       end-users.
+
+    b) Documentation: Within the official user documentation, manuals, or 
+       technical specifications supplied alongside the software.
+
+    c) Public Repository or Release Notice: Within the main README file, LICENSE 
+       file, or legal notices section of any repository or distribution package 
+       made available to third parties.
+
+3.5 Integrity of Attribution
+
+Required attribution notices must be reasonably legible and accessible to 
+end-users. Intentionally removing, hiding, or obscuring required attribution 
+in commercial or proprietary distributions constitutes a material breach of 
+this License.
+
+
+SECTION 4: TRADEMARKS AND NAMING RIGHTS
+
+4.1 No Trademark License
+
+This License does not grant any rights to use the trademarks, service marks, 
+trade names, logos, or brand names of any Contributor or the Licensor (including 
+the name "Wrench"), except as strictly required for reasonable and customary 
+use in describing the origin of the software or fulfilling the mandatory 
+attribution obligations under Section 3.
+
+4.2 Derivative and Fork Naming Restrictions
+
+You may not distribute modified versions, forks, or derivative works of the 
+Toolchain under the official name "Wrench", "Wrench Official", or any name 
+confusingly similar thereto, without express prior written permission from the 
+Licensor. Modified versions must clearly state that they are unofficial or 
+modified distributions (e.g., "Custom Fork of Wrench Toolchain").
+
+
+SECTION 5: PATENT DEFENSE (PATENT RETALIATION)
+
+5.1 Patent Defense Termination
+
+If You initiate patent litigation against any Contributor or Licensor (including 
+a cross-claim or counterclaim in a lawsuit) alleging that the Covered Software, 
+Toolchain, or any Contribution directly or indirectly infringes any patent, 
+then any patent rights and patent licenses granted to You under Section 1.2 
+for that Covered Software shall terminate automatically as of the date such 
+litigation is filed.
+
+5.2 Scope of Retaliation
+
+Upon termination under Section 5.1, You must immediately cease all use, 
+reproduction, modification, and distribution of the Covered Software 
+protected under such patent licenses.
+
+
+SECTION 6: TERMINATION AND TWO-MONTH CURE PERIOD
+
+6.1 Automatic Termination
+
+The rights granted to You under this License will terminate automatically if 
+You fail to comply with any of its terms or conditions (including file-level 
+copyleft obligations under Section 2 or required commercial attributions under 
+Section 3).
+
+6.2 Two-Month Cure Period
+
+Notwithstanding Section 6.1, Your rights under this License shall be 
+provisionally reinstated if You cease all non-compliance, subject to the 
+following rules:
+
+    a) Self-Correction Upon Awareness: If You become aware of Your 
+       non-compliance and fully remedy it prior to receiving formal notification, 
+       Your rights under this License are fully restored.
+
+    b) Formal Written Notice: If You receive a written notice of non-compliance 
+       from the Licensor or an affected Contributor, You are granted a grace 
+       period of two (2) calendar months from the date of receipt of such notice 
+       to fully remedy and cure the non-compliance.
+
+    c) Permanent Termination: If You fail to fully cure the non-compliance 
+       within the two-month period following written notification (or two months 
+       after becoming aware of the breach without taking corrective action), 
+       all rights granted to You under this License shall be permanently 
+       terminated without further notice.
+
+6.3 Effect on Downstream Recipients
+
+Termination of Your rights under this License shall not terminate, alter, or 
+diminish the license rights of any third parties or end-users who received 
+Generated Output, copies of Covered Software, or sublicenses from You in good 
+faith prior to such termination, provided those third parties remain in full 
+compliance with this License.
+
+
+SECTION 7: DISCLAIMER OF WARRANTY AND LIMITATION OF LIABILITY
+
+7.1 Disclaimer of Warranty
+
+The Covered Software and Toolchain are provided under this License on an 
+"AS IS" basis, without warranty of any kind, either expressed, implied, or 
+statutory, including, without limitation, warranties that the Covered 
+Software is free of defects, merchantable, fit for a particular purpose, or 
+non-infringing. The entire risk as to the quality and performance of the 
+Covered Software and Toolchain is with You. Should any Covered Software or 
+Toolchain prove defective in any respect, You (not the Licensor or any 
+Contributor) assume the cost of any necessary servicing, repair, or correction.
+
+7.2 Limitation of Liability
+
+Under no circumstances and under no legal theory, whether tort (including 
+negligence), contract, or otherwise, shall the Licensor, any Contributor, or 
+anyone who distributes Covered Software as permitted herein, be liable to You 
+or any third party for any direct, indirect, special, incidental, or 
+consequential damages of any character including, without limitation, damages 
+for loss of goodwill, work stoppage, computer failure or malfunction, loss of 
+data, or any and all other commercial damages or losses, even if such party 
+shall have been advised of the possibility of such damages.

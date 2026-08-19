@@ -1,35 +1,46 @@
 # Wrench, The Programming Language
 
-**Version** v0.1.0 (Alpha Prototype)
+**Version:** v0.1.1
 
-Wrench is a native, low-level programming language designed to get you as close to the hardware as possible without forcing you to write raw assembly by hand. It bypasses massive background runtimes and virtual machines, compiling directly into binary machine code.
+An open-source, native programming language combining Pythonic ergonomics with bare-metal assembly compilation—no heavy runtimes, no intermediate C translation.
 
-Current prototype targets **Linux x86-64** architecture and is taking the final steps before the bootstrapping phase.
+The current prototype targets **Linux x86-64** architecture and is taking the final preparation steps before the bootstrapping phase.
+
+---
+
+## Key Updates in v0.1.1
+
+* **Explicit Return Types:** Functions and methods now support optional explicit return type annotations using the `->` token (e.g., `define add(int a, int b) -> int`).
+* **Semantic & CodeGen Integration:** Compiler backend now syncs return-type metadata, strict variable types, and class fields directly from the semantic analyzer.
+* **Expanded Standard Library:** Integrated `std/argparser.wr`, `std/clone.wr`, `std/os.wr`, `std/regex.wr`, and `std/subprocess.wr`.
+* **Native Subsystem Controls:** Execute processes and communicate over IPC pipes directly via native Linux syscalls (`SYS_FORK`, `SYS_EXECVE`, `SYS_PIPE`, `SYS_DUP2`, `SYS_WAIT4`, `SYS_KILL`) without external C libraries.
+* **Backend Assembly Hardening:** Added native `printf` format parsing, 32-bit register call optimizations, inverse-jump conditional branching, and `SIGSEGV` stack frame recovery for array bounds checks.
+* **Standard Library Refactoring:** Annotated standard library routines with return types, restructured `sys.wr` into a `SysModule` object, removed embedded test harnesses, and translated Turkish error messages/comments to English.
+
+---
 
 ## 📂 Project Structure
 
-The compiler currently is written in Python and modularized into the following pipeline:
+The compiler pipeline is currently implemented in Python and modularized into the following structure:
 
-*`wrench.py`: The main CLI Entry Point.
-* `lexer.py`: Lexical analysis and tokenization.
-* `parser.py`: Abstract Syntax Tree (AST) generation.
-* `semantic.py`: Strict type-checking and semantic validation.
-* `codegen.py`: Linux x86-64 assembly generation.
-* `std/`: The Wrench Standard Library containing following essential modules:
-    *`collections.wr`
-    *`error.wr`
-    *`fs.wr`
-    *`math.wr`
-    *`string.wr`
-    *`sys.wr`
-    *`time.wr`
+* `wrench.py` - Main CLI entry point and pipeline orchestrator.
+* `lexer.py` - Lexical analysis, lexicon rules, and tokenization.
+* `parser.py` - Abstract Syntax Tree (AST) generation, syntax validation, keyword protection, and explicit return type parsing.
+* `semantic.py` - Strict type-checking, class hierarchy tracking, built-in type mapping, and AST `eval_type` tagging.
+* `codegen.py` - x86-64 assembly generation.
+* `std/` - The Wrench Standard Library containing:
+  * `argparser.wr`, `clone.wr`, `collections.wr`, `error.wr`, `fs.wr`, `math.wr`, `os.wr`, `regex.wr`, `string.wr`, `subprocess.wr`, `sys.wr`, `time.wr`
+
+---
 
 ## Prerequisites
 
-Since the Wrench compiler is currently running its prototype phase through Python, you will need:
+Since the Wrench compiler prototype currently runs via Python, you will need:
 
-* **Python 3.x** installed on your system.
-* **Linux x86-64 environment** (If you are on Windows, using **WSL - Windows Subsystem for Linux** is highly recommended to run the compiled binaries).
+* **Python 3.x**
+* **Linux x86-64 Environment** (On Windows, using **WSL - Windows Subsystem for Linux** is highly recommended to run compiled binaries).
+
+---
 
 ## Usage
 
@@ -38,6 +49,7 @@ Write your Wrench code in a `.wr` file and invoke the compiler via the command l
 ```bash
 python wrench.py hello.wr
 ```
+---
 
 ## Compiler Flags
 
@@ -46,6 +58,32 @@ python wrench.py hello.wr
 *`-k`/`--keep`: Keep temporary files (.asm / .o) to inspect the generated x86-64 assembly.
 *`-r`/`--run`: Compile, automatically run the program, and delete the executable immediately.
 
+---
+
 ## Documentation
 
-Comprehensive documentation, including a full tutorial, language reference, and standard library details, is provided in the release. Please refer to the PDF and HTML files included in the documentation folder or the latest release assets.
+Comprehensive documentation, including a full tutorial, language reference, release notes, and standard library details, is provided in the release. Please refer to the PDF, and Markdown files included in the documentation folder or the latest release assets.
+
+---
+
+## License 
+
+The following core toolchain components and files are covered under this license:
+
+*Compiler Pipeline: `wrench.py`, `lexer.py`, `parser.py`, `semantic.py`, `codegen.py`
+
+"Standard Library: All standard library modules located in the `std/` directory.
+
+---
+
+## Core Terms Overview
+
+*File-Level Copyleft: Any modifications to existing Covered Software files must remain open source under WPL-1.0. Independent works/modules remain unconstrained.
+
+*Output Freedom: Binaries and code generated by compiling through Wrench belong 100% to you. You are free to monetize or close the source of your applications.
+
+*Conditional Attribution: If you distribute commercial or closed-source applications built with Wrench, an attribution statement ("Built with Wrench Toolchain") must be provided in your application interface (--version), documentation, or repository.
+
+For complete terms and legal details, please consult the full LICENSE file in the root directory.
+
+---

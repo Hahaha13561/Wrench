@@ -2,9 +2,9 @@
     std/sys.wr
     System Library
 #/
-include "collections.wr";
+include "std/collections.wr";
 
-define args() {
+define args() -> List {
     var args_list = new List();
     var argc = sys_argc();
     var i = 0;
@@ -17,7 +17,7 @@ define args() {
     return args_list;
 }
 
-define execute(str program, List cmd_args) {
+define execute(str program, List cmd_args) -> int {
     var pid = syscall(57) cast int;
 
     if (pid =? 0) {
@@ -48,35 +48,48 @@ define execute(str program, List cmd_args) {
     return 0;
 }
 
-// FOLLOWING CODELINES ARE FOR TESTING.
-// ----------------------------------------
-/# 
-include "std/sys.wr";
+class SysModule {
+    List argv;
+    int stdin;
+    int stdout;
+    int stderr;
+    str platform;
 
-print("--- SYS LIBRARY TEST ---\n\n");
+    define init() {
+        this.stdin = 0;
+        this.stdout = 1;
+        this.stderr = 2;
+        this.platform = "linux";
 
-List arguments = args();
-var count = arguments.length;
+        this.argv = args();
+    }
 
-print("Total Arguments Given: ");
-print_int(count);
-print("\n");
+    define exit(int code) {
+        syscall(60, code, 0, 0, 0, 0, 0);
+    }
 
-var i = 0;
-while (i < count) {
-    print("Arg: ");
-    print(arguments.get(i) cast str);
-    print("\n");
-    i += 1;
+    define setrecursionlimit(int limit) {
+        print("[Warning]: Recursion limit is determined by your OS stack size.\n"); //That's not what it's supposed to be i assume..
+    }
+
+    define getsizeof(var obj) -> int {
+        attempt {
+            var size = len(obj) * 8;
+            return size;
+        }
+        exclude {
+            return 8;
+        }
+    }
+
+    define execute(str program, List cmd_args) {
+        execute(program, cmd_args);
+    }
+
+    define destroy() {
+        this.argv.destroy();
+        delete this.argv;
+    }
 }
 
-print("\n[*] Spawning child process with execute()...\n");
-
-var child_args = new List();
-child_args.push("/bin/echo"); 
-child_args.push("Hello from the Child Process!");
-
-execute("/bin/echo", child_args);
-
-print("[*] Child process finished successfully. Parent is exiting...\n");
-#/
+var sys = new SysModule();

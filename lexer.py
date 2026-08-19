@@ -20,6 +20,7 @@ TOKEN_SPECIFICATION = [
     ('FLOAT',         r'\d+\.\d+'),                 #Ondalıklı sayılar (double)
     ('INTEGER',       r'\d+'),                      #Tam sayılar
     ('OP_ASSIGN',     r'\+=|=\+|-=|=-|\*=|=\*|/=|=/|%=|=%|\^=|=\^'),     #Bileşik Atama Operatörleri
+    ('ARROW', r'->'),
     ('OP_MULTI', r'=\?|\?=|!=|=!|>=|=>|<=|=<|<|>'), #İki karakterli operatörler
     ('OP_SINGLE',     r'[+\-*/%^=]'),               #Tek karakterli operatörler
     ('PUNCTUATION',   r'[;,\(\)\{\}\[\]\.:]'),         #Noktalama ve parantezler
@@ -50,7 +51,7 @@ def tokenize(code):
                 kind = 'KEYWORD'
                 value = value.lower()
         elif kind == 'MISMATCH':
-            raise RuntimeError(f"Beklenmeyen karakter '{value}' Satır: {line_num} Sütun: {column}")
+            raise RuntimeError(f"Unexpected Character '{value}' Line: {line_num} Column: {column}")
         
         tokens.append((kind, value, line_num, column))
 

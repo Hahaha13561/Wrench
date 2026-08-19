@@ -1,0 +1,139 @@
+/# WRENCH STANDARD LIBRARY
+    std/regex.wr
+    Regular Expressions Library
+#/
+
+include "std/collections.wr";
+include "std/string.wr";
+
+class RegexPattern {
+    str raw_pattern;
+
+    define init(str pattern) {
+        this.raw_pattern = pattern;
+    }
+}
+
+define compile(str pattern) -> RegexPattern {
+    return new RegexPattern(pattern);
+}
+
+define match(str pattern, str text) -> str {
+    var pat_len = str_len(pattern);
+    var text_len = str_len(text);
+
+    if (pat_len > text_len) {
+        return null;
+    }
+
+    var i = 0;
+    while (i < pat_len) {
+        if (pattern[i] != "." cast char and pattern[i] != text[i]) {
+            return null;
+        }
+        i += 1;
+    }
+
+    return substring(text, 0, pat_len);
+}
+
+define finditer(str pattern, str text) -> List {
+    var results = new List();
+    var pat_len = str_len(pattern);
+    var text_len = str_len(text);
+
+    if (pat_len =? 0) {
+        return results;
+    }
+
+    var i = 0;
+    while (i <= (text_len - pat_len)) {
+        var j = 0;
+        var is_match = true;
+
+        while (j < pat_len) {
+            if (pattern[j] != "." cast char and pattern[j] != text[i + j]) {
+                is_match = false;
+                break;
+            }
+            j += 1;
+        }
+
+        if (is_match =? true) {
+            var match_str = substring(text, i, i + pat_len);
+            results.push(match_str);
+            i += pat_len;
+            goon;
+        }
+        i += 1;
+    }
+
+    return results;
+}
+
+define split(str pattern, str text) -> List {
+    var results = new List();
+    var pat_len = str_len(pattern);
+    var text_len = str_len(text);
+
+    if (pat_len =? 0) {
+        results.push(text);
+        return results;
+    }
+    
+    var start = 0;
+    var i = 0;
+
+    while (i <= (text_len - pat_len)) {
+        var j = 0;
+        var is_match = true;
+
+        while (j < pat_len) {
+            if (pattern[j] != "." cast char and pattern[j] != text[i + j]) {
+                is_match = false;
+                break;
+            }
+            j += 1;
+        }
+
+        if (is_match =? true) {
+            var part = substring(text, start, i);
+            results.push(part);
+            i += pat_len;
+            start = i;
+            goon;
+        }
+        i += 1;
+    }
+
+    var last_part = substring(text, start, text_len);
+    results.push(last_part);
+
+    return results;
+}
+
+define sub(str pattern, str repl, str text) -> str {
+    List parts = split(pattern, text) cast List;
+    var result = "";
+    var i = 0;
+    var parts_len = parts.length;
+
+    // WARNING: Since there is no GC, temporary concat assigns on this loop may cause a memory leak.
+    // In the future, it must be optimized on a single buffer using realloc.
+
+    while (i < parts_len) {
+        var part = parts.get(i) cast str;
+
+        result = concat(result, part);
+
+        if (i < (parts_len - 1)) {
+            result = concat(result, repl);
+        }
+        i += 1;
+    }
+
+    parts.destroy();
+    delete parts;
+
+    return result;
+}

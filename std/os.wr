@@ -1,0 +1,266 @@
+/# WRENCH STANDARD LIBRARY
+    std/os.wr
+    Operating System Library
+#/
+include "std/error.wr";
+include "std/collections.wr";
+include "std/string.wr";
+
+class PathModule {
+
+    define join(str p1, str p2) -> str {
+        var len1 = str_len(p1);
+        if (len1 > 0) {
+            if (p1[len1 - 1] =? "/" cast char) {
+                return concat(p1, p2);
+            }
+            return concat(concat(p1, "/"), p2);
+        }
+        return p2;
+    }
+
+    define dirname(str p) -> str {
+        var len = str_len(p);
+        var i = len - 1;
+        while (i >= 0) {
+            if (p[i] =? "/" cast char) {
+                if (i =? 0) {
+                    return "/";
+                }
+                return substring(p, 0, i);            
+            }
+            i -= 1;
+        }
+        return "";
+    }
+
+    define normpath(str p) -> str {
+        var parts = split(p, "/" cast char);
+        List stack = new List();
+
+        var i = 0;
+        var parts_len = len(parts);
+
+        while (i < parts_len) {
+            str part = parts[i] cast str;
+            if (part != "" and part != ".") {
+                if (part =?"..") {
+                    if (stack.length > 0) {
+                        stack.pop();
+                    }
+                }
+                else {
+                    stack.push(part);
+                }
+            }
+            i += 1;
+        }
+
+        var res = "";
+        var p_len = str_len(p);
+        if (p_len > 0 and p[0] =? "/" cast char) {
+            res = "/";
+        }
+
+        var j = 0;
+        while (j < stack.length) {
+            res = concat(res, stack.get(j) cast str);
+            if (j != stack.length - 1) {
+                res = concat(res, "/");
+            }
+            j += 1;
+        }
+
+        if (res =? "") {
+            res = ".";
+        }
+
+        free(parts);
+        stack.destroy();
+        delete stack;
+
+        return res;
+    }
+
+    define exists(str p) -> bool {
+        var res = syscall(21, p, 0, 0, 0, 0, 0) cast int;
+        return (res =? 0);
+    }
+
+    define abspath(str p) -> str {
+
+        if (str_len(p) > 0 and p[0] =? "/" cast char) {
+            return this.normpath(p);
+        }
+
+        var buf_size = 4096;
+        str buf = alloc(buf_size);
+        var res = syscall(79, buf, buf_size, 0, 0, 0, 0) cast int;
+
+        var cwd = "";
+        if (res >= 0) {
+            cwd = buf;
+        }
+        else {
+            cwd = ".";
+        }
+
+        var joined = this.join(cwd, p);
+        var absolute = this.normpath(joined);
+        
+        return absolute;
+    }
+
+}
+
+class OSModule {
+    PathModule path;
+    int R_OK;
+
+    define init() {
+        this.path = new PathModule();
+        this.R_OK = 4; // sys_access read permission flag
+    }
+
+    define raise_os_error(str path, int sys_res) {
+        var err_code = 0 - sys_res;
+        var msg = concat("OS Operation Failed on: ", path);
+
+        if (err_code =? 2) {
+            var e = new FileNotFoundError(msg);
+            e.print_err();
+            trigger e.code;
+        }
+
+        butif (err_code =? 13) {
+            var e = new PermissionError(msg);
+            e.print_err();
+            trigger e.code;
+        }
+
+        butif (err_code =? 17) {
+            var e = new FileExistsError(msg);
+            e.print_err();
+            trigger e.code;
+        }
+
+        butif (err_code =? 20) {
+            var e = new NotADirectoryError(msg);
+            e.print_err();
+            trigger e.code;
+        }
+
+        butif (err_code =? 21) {
+            var e = new IsADirectoryError(msg);
+            e.print_err();
+            trigger e.code;
+        }
+
+        else {
+            var e = new OSError(msg, err_code);
+            e.print_err();
+            trigger e.code;
+        }
+    }
+
+    define getcwd() -> str {
+        var buf_size = 4096;
+        str buf = alloc(buf_size);
+        var res = syscall(79, buf, buf_size, 0, 0, 0, 0) cast int;
+        if (res < 0) {
+            this.raise_os_error("getcwd()", res);
+            return "";
+        }
+        return buf;
+    }
+
+    define remove(str p) -> bool {
+        var res = syscall(87, p, 0, 0, 0, 0) cast int;
+        if (res < 0) {
+            this.raise_os_error(p, res);
+            return false;
+        }
+        return true;
+    }
+
+    define rmdir(str p) -> bool {
+        var res = syscall(84, p, 0, 0, 0, 0) cast int;
+        if (res < 0) {
+            this.raise_os_error(p, res);
+            return false;
+        }
+        return true;
+    }
+
+    define makedirs(str p, bool exist_ok) {
+        var parts = split(p, "/" cast char);
+        var current = "";
+
+        if (p[0] =? "/" cast char) {
+            current = "/";
+        }
+        
+        var parts_len = len(parts);
+        var i = 0;
+        
+        while (i < parts_len) {
+            str part = parts[i] cast str;
+            if (part != "") {
+                current = this.path.join(current, part);
+                
+                var is_leaf = (i =? (parts_len - 1));
+                var dir_exists = this.path.exists(current);
+                
+                if (dir_exists =? false) {
+                    // Syscall 83: sys_mkdir (mode 0755 = 493 decimal)
+                    var res = syscall(83, current, 493, 0, 0, 0, 0) cast int;
+                    if (res < 0) {
+                        this.raise_os_error(current , res);
+                    }
+                } 
+                else {
+                    if (is_leaf and exist_ok =? false) {
+                        this.raise_os_error(current , -17); // EEXIST
+                    }
+                }
+            }
+            i += 1;
+        }
+        free(parts);
+    }
+
+    define access(str p, int mode) -> bool {
+        var res = syscall(21, p, mode, 0, 0, 0, 0) cast int;
+        return (res =? 0);
+    }
+
+    //Note: Loading all environmental variables to a static map carries Memory Leak risks. Currently getenv is used, but it needs to be fixed.
+    define getenv(str key) -> str {
+        var argc = sys_argc();
+        var i = argc + 1;
+        var key_len = str_len(key);
+        
+        while (true) {
+            var var_ptr = sys_argv(i) cast int;
+            if (var_ptr =? 0) {
+                break;
+            }
+
+            var env_str = sys_argv(i) cast str;
+            var env_len = str_len(env_str);
+
+            if (env_len > key_len) {
+                if (env_str[key_len] =? "=" cast char) {
+                    var current_key = substring(env_str, 0, key_len);
+                    if (current_key =? key) {
+                        return substring(env_str, key_len + 1, env_len);
+                    }
+                }
+            }
+            i += 1;
+        }
+        return null;
+    }
+}
+
+OSModule os = new OSModule();

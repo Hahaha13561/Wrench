@@ -1,0 +1,132 @@
+/# WRENCH STANDARD LIBRARY
+    std/argparser.wr
+    Argument Parser Library
+#/
+
+include "std/collections.wr";
+include "std/string.wr";
+include "std/sys.wr";
+
+class Argument {
+    str name;
+    str arg_type;
+    str action;
+
+    define init(str name, str arg_type, str action) {
+        this.name = name;
+        this.arg_type = arg_type;
+        this.action = action;
+    }
+}
+
+class ArgumentParser {
+    str description;
+    List arguments;
+    Map subparsers;
+
+    define init(str desc) {
+        this.description = desc;
+        this.arguments = new List();
+        this.subparsers = new Map();
+    }
+
+    define add_argument(str name, str arg_type, str action) {
+        var arg = new Argument(name, arg_type, action);
+        this.arguments.push(arg);
+    }
+
+    define add_subparsers(str command_name, str desc) -> ArgumentParser {
+        var sub_parser = new ArgumentParser(desc);
+        this.subparsers.set(command_name, sub_parser);
+        return sub_parser;
+    }
+
+    define parse_args(List sys_args) -> Map {
+        var parsed_data = new Map();
+        var len = sys_args.length;
+        var i = 1; 
+
+        var j = 0;
+        var arg_len = this.arguments.length;
+        while (j < arg_len) {
+            var arg_def = this.arguments.get(j) cast Argument;
+            
+            if (arg_def.action =? "count") {
+                parsed_data.set(arg_def.name, 0);
+            } butif (arg_def.action =? "store_true") {
+                parsed_data.set(arg_def.name, false);
+            } else {
+                parsed_data.set(arg_def.name, null);
+            }
+            j += 1;
+        }
+
+        while (i < len) {
+            var current_arg = sys_args.get(i) cast str;
+            var matched = false;
+
+            var k = 0;
+            while (k < arg_len) {
+                var arg_def = this.arguments.get(k) cast Argument;
+                
+                if (current_arg =? arg_def.name) {
+                    matched = true;
+
+                    // action="store"
+                    if (arg_def.action =? "store") {
+                        if ((i + 1) < len) {
+                            var val_str = sys_args.get(i + 1) cast str;
+                            
+                            // type="..." 
+                            if (arg_def.arg_type =? "int") {
+                                parsed_data.set(arg_def.name, parse_int(val_str));
+                            } else {
+                                parsed_data.set(arg_def.name, val_str);
+                            }
+                            i += 1;
+                        }
+                    } 
+                    // action="store_true"
+                    butif (arg_def.action =? "store_true") {
+                        parsed_data.set(arg_def.name, true);
+                    } 
+                    // action="count"
+                    butif (arg_def.action =? "count") {
+                        var current_count = parsed_data.get(arg_def.name) cast int;
+                        parsed_data.set(arg_def.name, current_count + 1);
+                    }
+                    
+                    break;
+                }
+                k += 1;
+            }
+
+            // Subparser control (Subcommand check)
+            if (matched =? false) {
+                if (this.subparsers.has(current_arg)) {
+                    var sub_parser = this.subparsers.get(current_arg) cast ArgumentParser;
+                    // Subparser can be run recursive to read the remaining arguments.
+                    // (Simplified for the prototype phase)
+                }
+            }
+            
+            i += 1;
+        }
+        return parsed_data;
+    }
+
+    define destroy() {
+        var j = 0;
+        while (j < this.arguments.length) {
+            var arg_def = this.arguments.get(j) cast Argument;
+            delete arg_def;
+            j += 1;
+        }
+        
+        this.arguments.destroy();
+        delete this.arguments;
+        
+        this.subparsers.destroy();
+        delete this.subparsers;
+    }
+}

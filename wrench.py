@@ -9,7 +9,7 @@ from semantic import SemanticAnalyzer
 from codegen import CodeGen
 
 def resolve_imports(ast, current_dir, linked_objects, imported_asts=None, fully_included=None):
-    """AST'yi tarar, include/from/link komutlarını bulur, resolve eder ve AST'ye geri merge eder."""
+    """Scans the AST, finds inclusions, origins and links, resolves and merges back to the AST."""
     if imported_asts is None:
         imported_asts = {}
     if fully_included is None:
@@ -60,23 +60,35 @@ def resolve_imports(ast, current_dir, linked_objects, imported_asts=None, fully_
                 for sub_node in sub_ast:
                     sub_node_type = type(sub_node).__name__
                     name = None
+                    target_tok = None
+
                     if sub_node_type == 'FuncDefNode':
                         name = sub_node.func_name_tok[1]
+                        target_tok = sub_node.func_name_tok
+
                     elif sub_node_type == 'ClassDefNode':
                         name = sub_node.class_name_tok[1]
+                        target_tok = sub_node.class_name_tok
+
                     elif sub_node_type == 'VarAssignNode':
                         name = sub_node.var_name_tok[1]
+                        target_tok = sub_node.var_name_tok
 
                     if name == item_name:
                         if node.alias_tok:
                             node_to_add = copy.deepcopy(sub_node)
-                            alias_tok = ('IDENTIFIER', alias_name, sub_node.func_name_tok[2], sub_node.func_name_tok[3])
+                            line = target_tok[2] if target_tok and len(target_tok) > 2 else 0
+                            col = target_tok[3] if target_tok and len(target_tok) > 3 else 0
+                            alias_tok = ('IDENTIFIER', alias_name, line, col)
                             if sub_node_type == 'FuncDefNode':
                                 node_to_add.func_name_tok = alias_tok
                             elif sub_node_type == 'ClassDefNode':
                                 node_to_add.class_name_tok = alias_tok
                             elif sub_node_type == 'VarAssignNode':
                                 node_to_add.var_name_tok = alias_tok
+
+                        else:
+                            node_to_add = sub_node
 
                         new_ast.append(node_to_add)
                         found = True
@@ -113,13 +125,13 @@ def compile_file(input_file, output_name=None, is_strict=True, keep_temps=False)
         print(f"Error: {input_file} not found.")
         sys.exit(1)
 
-    print("[2/5] Launching rule chain...")
+    print("[2/5]  Tokenizing and Parsing...")
     try:
         tokens = tokenize(source_code)
         parser = Parser(tokens)
         ast = parser.parse()
 
-        print("[3/5] Launching rule chain...")
+        print("[3/5]  Resolving Imports and Performing Semantic Analysis...")
         linked_objects = set()
         current_dir = os.path.dirname(os.path.abspath(input_file))
 
@@ -128,11 +140,15 @@ def compile_file(input_file, output_name=None, is_strict=True, keep_temps=False)
         analyzer = SemanticAnalyzer(strict_mode=is_strict)
         analyzer.analyze(ast)
 
-        compiler = CodeGen()
+        compiler = CodeGen(semantic_analyzer=analyzer)
         compiler.generate(ast)
         asm_code = compiler.get_code()
 
     except Exception as e:
+        #Debug code
+        import traceback
+        traceback.print_exc()
+        #Debug code end
         print(f"\n COMPILING ERROR:\n{str(e)}")
         sys.exit(1)
 

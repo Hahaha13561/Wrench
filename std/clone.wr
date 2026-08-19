@@ -1,0 +1,68 @@
+/# WRENCH STANDARD LIBRARY
+   std/clone.wr
+   Memory Cloning and Manipulation Library
+#/
+
+class CloneModule {
+
+    define init() {}
+
+    define clone_mem(var dest, var src, int count) {
+        if (dest =? null or src =? null or count <= 0) {
+            return;
+        }
+
+        var i = 0;
+        var d_ptr = dest cast int;
+        var s_ptr = src cast int;
+
+        while (i < count) {
+            var b = ((s_ptr + i) cast ptr) cast str;
+            var d = ((d_ptr + i) cast ptr) cast str;
+            d[0] = b[0];
+            i += 1;
+        }
+    }
+
+    define fill(var target, int value, int count) {
+        if (target =? null or count <= 0) {
+            return;
+        }
+
+        var i = 0;
+        var t_ptr = target cast int;
+        var val_char = value cast char;
+
+        while (i < count) {
+            var cell = ((t_ptr + i) cast ptr) cast str;
+            cell[0] = val_char;
+            i += 1;
+        }
+    }
+
+    define swap_arr(var arr, int i, int j) {
+        var temp = arr[i]; 
+        arr[i] = arr[j];
+        arr[j] = temp;
+    }
+
+    define clone(var obj) -> var {
+        if (obj =? null) {
+            return null;
+        }
+
+        var obj_ptr = obj cast int;
+        var byte_len = get_len(obj) * 8;
+
+        if (byte_len <= 0) {
+            return null;
+        }
+
+        var new_mem = alloc(byte_len);
+        this.clone_mem(new_mem, obj, byte_len);
+
+        return new_mem;
+    }
+}
+
+CloneModule clone = new CloneModule();  
