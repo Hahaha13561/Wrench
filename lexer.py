@@ -1,7 +1,6 @@
 import re 
 
-# 1. ANAHTAR KELİMELER
-#  Dile ait anahtar kelimeler bu listede kontrol edilir.
+# KEYWORDS
 KEYWORDS = {
     'and', 'or', 'not', 'nand', 'nor', 'xor', 'xnor', 'as', 'if', 'else', 'butif', 'exclude', 'allege', 'async', 'sync',
     'await', 'wait', 'break', 'case', 'class', 'goon', 'define', 'delete', 'false', 'true', 'final', 'attempt', 'for', 
@@ -10,28 +9,27 @@ KEYWORDS = {
     'switch', 'default', 'extends', 'extern', 'hex', 'ptr', 'pointer', 'address' }
 
 # 2. LEXER SPECIFICATIONS 
-# Regex Sırası önemlidir.
+# The order is important
 
 TOKEN_SPECIFICATION = [
-    ('MULTI_COMMENT', r'/\#[\s\S]*?\#/'),           #Çok sıralı yorum
-    ('SINGLE_COMMENT', r'//.*'),                    #Tek sıralı yorum
-    ('STRING',        r'".*?"|\'.*?\''),            #Çift ya da tek tırnaklı "metinler"
-    ('HEX',           r'0[xX][0-9a-fA-F]+'),
-    ('FLOAT',         r'\d+\.\d+'),                 #Ondalıklı sayılar (double)
-    ('INTEGER',       r'\d+'),                      #Tam sayılar
-    ('OP_ASSIGN',     r'\+=|=\+|-=|=-|\*=|=\*|/=|=/|%=|=%|\^=|=\^'),     #Bileşik Atama Operatörleri
-    ('ARROW', r'->'),
-    ('OP_MULTI', r'=\?|\?=|!=|=!|>=|=>|<=|=<|<|>'), #İki karakterli operatörler
-    ('OP_SINGLE',     r'[+\-*/%^=]'),               #Tek karakterli operatörler
-    ('PUNCTUATION',   r'[;,\(\)\{\}\[\]\.:]'),         #Noktalama ve parantezler
-    ('IDENTIFIER',    r'[A-Za-z_]\w*'),             #Değişken ve fonksiyon identifier'ları (isim atamaları)
-    ('WHITESPACE',    r'[ \t\n]+'),                 #Boşluklar (atlamak için)
-    ('MISMATCH',      r'.'),                        #Tanımlanmayan karakter (Hata fırlatacak)
+    ('MULTI_COMMENT', r'/\#[\s\S]*?\#/'),                                   #Multi-line Comment
+    ('SINGLE_COMMENT', r'//.*'),                                            #Single-line Comment
+    ('STRING',        r'".*?"|\'.*?\''),                                    #Strings
+    ('HEX',           r'0[xX][0-9a-fA-F]+'),                                #Hexadecimal Numbers
+    ('FLOAT',         r'\d+\.\d+'),                                         #Floating Point Numbers
+    ('INTEGER',       r'\d+'),                                              #Integer Numbers
+    ('OP_ASSIGN',     r'\+=|=\+|-=|=-|\*=|=\*|/=|=/|%=|=%|\^=|=\^'),        #Assign Operators
+    ('ARROW', r'->'),                                                       #Arrow
+    ('OP_MULTI', r'=\?|\?=|!=|=!|>=|=>|<=|=<|<|>'),                         #Multi-char Operators
+    ('OP_SINGLE',     r'[+\-*/%^=]'),                                       #Single-char Operators
+    ('PUNCTUATION',   r'[;,\(\)\{\}\[\]\.:]'),                              #Punctuations
+    ('IDENTIFIER',    r'[A-Za-z_]\w*'),                                     #Identifiers
+    ('WHITESPACE',    r'[ \t\n]+'),                                         #Spaces
+    ('MISMATCH',      r'.'),                                                #Unrecognized Characters
 ]
 
 def tokenize(code):
     tokens = []
-    #Kuralları regex deseninde birleştir
     tok_regex = '|'.join(f'(?P<{pair[0]}>{pair[1]})' for pair in TOKEN_SPECIFICATION)
 
     for mo in re.finditer(tok_regex, code):

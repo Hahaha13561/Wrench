@@ -69,8 +69,7 @@ class SemanticAnalyzer:
 
     def generic_visit(self, node):
         if self.strict_mode:
-            raise Exception(f"Semantik Hata (Strict Mode): '{type(node).__name__}' için semantik analiz (visit) kuralı tanımlanmamış. "
-                f"Lütfen SemanticAnalyzer içine 'visit_{type(node).__name__}' metodunu ekleyin.")
+            raise Exception(f"Semantic Error (Strict Mode): visit rule for '{type(node).__name__}' in Semantic Analyzer is undefined.")
 
     def check_type_compatibility(self, target_type, value_type, var_name=""):
         """Check the compability between target type and the assigned value."""
@@ -97,14 +96,14 @@ class SemanticAnalyzer:
         """Checks if the condition is transformable into a logical value."""
         cond_type = self.visit(cond_node)
         if self.strict_mode and cond_type in ('unit', 'void'):
-            raise Exception(f"Semantik Error: '{context_name}' cannot be '{cond_type}'.")
+            raise Exception(f"Semantic Error: '{context_name}' cannot be '{cond_type}'.")
         return cond_type
 
     def check_index_type(self, index_node, context="array index"):
         """Verifies the Index state is 'int' or 'hex'."""
         idx_type = self.visit(index_node)
         if self.strict_mode and idx_type not in ('int', 'hex', 'any'):
-            raise Exception(f"Semantik Error: '{context}' should be 'int' or 'hex', given '{idx_type}'")
+            raise Exception(f"Semantic Error: '{context}' should be 'int' or 'hex', given '{idx_type}'")
         return idx_type
 
     def get_field_type(self, class_name, field_name):
@@ -411,7 +410,7 @@ class SemanticAnalyzer:
             if var_name in env:
                 node.eval_type = env[var_name]
                 return env[var_name]
-        raise Exception(f"Semantik Hata: '{var_name}' tanimsiz.")
+        raise Exception(f"Semantic Error: '{var_name}' is undefined.")
 
     def visit_BinOpNode(self, node):
         left_type = self.visit(node.left_node)
@@ -518,7 +517,7 @@ class SemanticAnalyzer:
 
         if self.strict_mode:
             if start_type not in ('int', 'hex', 'any') or end_type not in ('int', 'hex', 'any'):
-                raise Exception(f"Semantik Error: start and end parameters for 'limits' should be 'int'.")
+                raise Exception(f"Semantic Error: start and end parameters for 'limits' should be 'int'.")
         node.eval_type = 'int[]'
         return 'int[]'
 

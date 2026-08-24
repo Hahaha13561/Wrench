@@ -20,7 +20,7 @@ class CodeGen:
             self.sync_semantic(semantic_analyzer)
 
     def sync_semantic(self, sem):
-        """SemanticAnalyzer'ın topladığı tüm fonksiyon, metot ve sınıf tiplerini CodeGen'e aktarır."""
+        """Passes all the function, method, and class types collected by Semantic Analyzer to CodeGen."""
         self.semantic_analyzer = sem
 
         if hasattr(sem, 'functions'):
@@ -38,13 +38,13 @@ class CodeGen:
                     self.method_return_types[(c_name, m_name)] = m_ret
 
     def generate(self, node):
-        """Ağactaki Node'un türüne göre ilgili fonksiyonu çalıştırır."""
+        """Executes the appropriate function based on the type of Node in the tree."""
         method_name = f'visit_{type(node).__name__}'
         visitor = getattr(self, method_name, self.generic_visit)
         return visitor(node)
 
     def generate_branch(self, cond_node, false_label):
-        """Turn the Condition Statements into Inverse JMP instructions."""
+        """Turns the Condition Statements into Inverse JMP instructions."""
 
         #If the condition is a BinOp:
         if type(cond_node).__name__ == 'BinOpNode':
@@ -115,7 +115,7 @@ class CodeGen:
         raise Exception (f'ERROR: No Assembly Translation for {type(node).__name__}.')
 
     def get_code(self):
-        """Assembly kodunu birleştirip çalıştırılabilir NASM şablonu verir."""
+        """Combines assembly code to produce an executable NASM template."""
 
         data_code = [
             "section .data",
@@ -754,14 +754,14 @@ class CodeGen:
         return f"{base_name}_{self.label_count}"
 
     def get_var_offset(self, var_name):
-        """Değişkeni en içteki (yeni) Scope'tan başlayarak geriye doğru arar."""
+        """Searches for the variable backward, starting from the innermost (new) Scope."""
         for env in reversed(self.environments):
             if var_name in env:
                 return env[var_name]
         return None
 
     def get_var_type(self, var_name):
-        """Değişkenin class'ını bul."""
+        """Finds the class of the variable."""
         for env in reversed(self.type_environments):
             if var_name in env:
                 return env[var_name]
@@ -945,12 +945,12 @@ class CodeGen:
         return node, active_shortcuts, pos_idx
        
     def enter_scope(self):
-        """Yeni bir { açıldığında yeni yerel kapsam (scope) yarat."""
+        """Creates a new local scope when a new { is opened."""
         self.environments.append({})
         self.type_environments.append({})
 
     def exit_scope(self):
-        """Bir } kapandığında son açılan yerel kapsamı (scope) kapat."""
+        """Closes the last local scope when closed with a }."""
         self.environments.pop()
         self.type_environments.pop()
     # ----- VISITOR FUNCTIONS -----
@@ -1037,7 +1037,7 @@ class CodeGen:
         }
 
     def visit_NumberNode(self, node):
-        """When visiting a number place it in the RAX register."""
+        """When visiting a number places it in the RAX register."""
         
         if node.tok[0] == 'FLOAT':
             self.assembly.append(f"    mov rax, __float64__({node.tok[1]})")       
@@ -1049,7 +1049,7 @@ class CodeGen:
                 self.assembly.append(f"    mov rax, {node.tok[1]}")
 
     def visit_IfNode(self, node):
-        """if, butif ve else yapılarını JMP'e çevirir."""
+        """Turns if, butif and else cases to JMPs."""
         end_label = self.get_new_label("IF_END")
         initial_offset = self.stack_offset
 
@@ -1067,12 +1067,12 @@ class CodeGen:
             self.stack_offset = initial_offset
             self.generate(node.else_case)
 
-        # Herkesin sonda ulaştığı ortak zemin
+        # Public label all cases end at
         self.stack_offset = initial_offset
         self.assembly.append(f"{end_label}:")
 
     def visit_WhileNode(self, node):
-        """While döngüsü."""
+        """While loop."""
         start_label = self.get_new_label("WHILE_START")
         end_label = self.get_new_label("WHILE_END")
 
@@ -1093,7 +1093,7 @@ class CodeGen:
         self.enter_scope()
         current_env = self.environments[-1]
 
-        # 1. Gizli değişkenler için stack'te yer ayır (Array_Ptr, Array_Len, Index)
+        # 1. Allocates space on the stack for hidden variables.
         self.stack_offset += 8
         ptr_offset = self.stack_offset
         self.assembly.append("    sub rsp, 8")
@@ -1106,25 +1106,25 @@ class CodeGen:
         idx_offset = self.stack_offset
         self.assembly.append("    sub rsp, 8")
 
-        # 2. Programcının kullanacağı asıl döngü değişkeni (örn: eleman)
+        # 2. The actual loop variable used by the programmer.
         self.stack_offset += 8
         current_env[var_name] = self.stack_offset
         elem_offset = self.stack_offset
         self.assembly.append("    sub rsp, 8")
 
-        # 3. Diziyi (Array) hesapla ve pointer'ı kaydet
+        # 3. Calculates the Array and saves the pointer.
         self.generate(node.iter_node)
         self.assembly.append(f"    mov qword [rbp - {ptr_offset}], rax")
 
-        # 4. Dizinin uzunluğunu bul ve kaydet (Önceden yazdığımız get_len syscall'u)
+        # 4. Finds the Array length and saves.
         self.assembly.append("    mov rdi, rax")
         self.assembly.append("    call get_len")
         self.assembly.append(f"    mov qword [rbp - {len_offset}], rax")
 
-        # 5. Index'i 0'dan başlat
+        # 5. Starts Index from 0
         self.assembly.append(f"    mov qword [rbp - {idx_offset}], 0")
 
-        # DÖNGÜ BAŞLANGICI
+        # LOOP START
         start_label = self.get_new_label("FOR_START")
         inc_label = self.get_new_label("FOR_INC")
         end_label = self.get_new_label("FOR_END")
@@ -1133,37 +1133,37 @@ class CodeGen:
 
         self.assembly.append(f"{start_label}:")
 
-        # 6. Koşul Kontrolü: index >= length ise döngüden çık
+        # 6. Condition Check
         self.assembly.append(f"    mov rax, qword [rbp - {idx_offset}]")
         self.assembly.append(f"    mov rbx, qword [rbp - {len_offset}]")
         self.assembly.append("    cmp rax, rbx")
         self.assembly.append(f"    jge {end_label}")
 
-        # 7. Elemanı diziden çek ve değişkene ata: elem = array[index * 8]
+        # 7. Pulls the element from the array and assign it to a variable.
         self.assembly.append(f"    mov rbx, qword [rbp - {idx_offset}]")
-        self.assembly.append("    shl rbx, 3") # Index'i 8 ile çarp (Pointer kaydırması)
+        self.assembly.append("    shl rbx, 3") # Index*8
         self.assembly.append(f"    mov rax, qword [rbp - {ptr_offset}]")
         self.assembly.append("    mov rcx, qword [rax + rbx]")
         self.assembly.append(f"    mov qword [rbp - {elem_offset}], rcx")
 
-        # 8. Kod bloğunu (body) çalıştır
+        # 8. Executes code body
         self.generate(node.body)
 
-        # 9. Index'i 1 artır ve başa dön
+        # 9. Increases Index by 1 and jumps back to beginning.
         self.assembly.append(f"{inc_label}:")
         self.assembly.append(f"    mov rax, qword [rbp - {idx_offset}]")
         self.assembly.append("    inc rax")
         self.assembly.append(f"    mov qword [rbp - {idx_offset}], rax")
         self.assembly.append(f"    jmp {start_label}")
 
-        # DÖNGÜ BİTİŞİ
+        # LOOP END
         self.assembly.append(f"{end_label}:")
 
         self.loop_stack.pop()
         self.exit_scope()
 
     def visit_ReAssignNode(self, node):
-        """Var olan değişkeni güncelleme."""
+        """Updates the existing variable."""
         var_name = node.var_name_tok[1]
 
         loc = getattr(self, 'get_var_loc', lambda x: f"qword [rbp - {self.get_var_offset(x)}]")(var_name)
@@ -1238,7 +1238,7 @@ class CodeGen:
             self.assembly.append(f"    mov rax, {loc}")
             self.assembly.append("    cqo")
             self.assembly.append("    idiv rbx")
-            self.assembly.append(f"    mov {loc}, rdx") # Kalanı kaydet
+            self.assembly.append(f"    mov {loc}, rdx") 
         elif op in ('^=', '=^'):
             self.assembly.append("    mov rsi, rax")
             self.assembly.append(f"    mov rdi, {loc}")
@@ -1289,15 +1289,12 @@ class CodeGen:
         self.assembly.append(f"    jmp {final_label}")
 
         self.assembly.append(f"{exclude_label}:")
-        # RAX içinde fırlatılan hata kodu var.
-        # Önce yığını temizleyip hizalayalım:
         self.assembly.append("    mov rsp, rbp")
         self.assembly.append("    sub rsp, 64")
 
         self.stack_offset = old_stack
         if node.exclude_body:
             self.enter_scope()
-            # 'err' değişkenini güvenli [rbp - 32] adresine koyup RAX'ı Doğrudan yazıyoruz!
             self.stack_offset = 32
             self.environments[-1]['err'] = self.stack_offset
             self.assembly.append(f"    mov qword [rbp - {self.stack_offset}], rax")
@@ -1306,7 +1303,7 @@ class CodeGen:
             self.exit_scope()
 
         else:
-            self.assembly.append("    push rax") # Exclude bloğu yoksa hatayı koru
+            self.assembly.append("    push rax") # Saves the error if no Exclude
             if node.final_body:
                 self.generate(node.final_body)
             self.assembly.append("    pop rax")
@@ -1343,13 +1340,13 @@ class CodeGen:
 
         self.assembly.append("    mov rcx, qword [rbx + 24]")
         self.assembly.append("    mov qword [rel global_err_frame], rcx")
-        self.assembly.append("    mov rdx, qword [rbx + 16]") # Exclude Adresi
-        self.assembly.append("    mov rbp, qword [rbx + 8]")  # Eski RBP
-        self.assembly.append("    mov rsp, qword [rbx]")      # Eski RSP
+        self.assembly.append("    mov rdx, qword [rbx + 16]") # Exclude Address
+        self.assembly.append("    mov rbp, qword [rbx + 8]")  # Old RBP
+        self.assembly.append("    mov rsp, qword [rbx]")      # Old RSP
         self.assembly.append("    jmp rdx")
 
         self.assembly.append(f"{crash_label}:")
-        self.assembly.append("    mov rdi, rax") # RDI = Çıkış Kodu (Hata Kodu)
+        self.assembly.append("    mov rdi, rax") # RDI = Exit/Error Code
         self.assembly.append("    mov eax, 60")  # sys_exit
         self.assembly.append("    syscall")
 
@@ -1378,7 +1375,7 @@ class CodeGen:
         self.assembly.append(f"    mov {loc}, rax")
 
     def visit_VarAccessNode(self, node):
-        """Değişken değerinin RAM'den okunması"""
+        """Reads the variable value from RAM."""
         var_name = node.var_name_tok[1]
         loc = self.get_var_loc(var_name)
         if loc is None:
@@ -1386,14 +1383,13 @@ class CodeGen:
         self.assembly.append(f"    mov rax, {loc}")
 
     def visit_BinOpNode(self, node):
-        """Matematik, Kıyaslama ve String işlemlerini Assembly diline indirge."""
+        """Reduces mathematics, comparison, and string operations to assembly language."""
         self.generate(node.right_node)
         
-        # DİKKAT: Artık 'eval_type' değil, donanımı seçmek için 'operand_type' okuyoruz!
         op_type = getattr(node, 'operand_type', getattr(node.left_node, 'eval_type', 'int')) 
 
         if op_type == 'string':
-            # --- STRING İŞLEMLERİ ---
+            # --- STRING ---
             op = node.op_tok[1]
             if op == '+':
                 self.assembly.append("    push rax")
@@ -1406,7 +1402,7 @@ class CodeGen:
                 self.generate(node.left_node)
                 self.assembly.append("    mov rdi, rax")
                 self.assembly.append("    pop rsi")
-                self.assembly.append("    call compare_strings") # RAM'deki yazıları karşılaştırır
+                self.assembly.append("    call compare_strings")
                 self.assembly.append("    test rax, rax")
 
                 if op in ('=?', '?=', 'is', 'same'): self.assembly.append("    sete al") 
@@ -1417,10 +1413,10 @@ class CodeGen:
                 elif op in ('<=', '=<'): self.assembly.append("    setle al") 
                 self.assembly.append("    movzx rax, al")
             else:
-                raise Exception("Semantik Error: Unsupported operation between strings.")
+                raise Exception("Semantic Error: Unsupported operation between strings.")
                 
         elif op_type == 'double':
-            # --- ONDALIKLI SAYI İŞLEMLERİ (FPU / XMM) ---
+            # --- FLOATING POINT NUMBERS ---
             self.assembly.append("    push rax")
 
             self.generate(node.left_node)
@@ -1445,18 +1441,18 @@ class CodeGen:
             elif op == '%':
                 self.assembly.append("    sub rsp, 16")
                 self.assembly.append("    movsd [rsp], xmm1")
-                self.assembly.append("    fld qword [rsp]")     # st0 = bölen (xmm1)
+                self.assembly.append("    fld qword [rsp]")     
                 self.assembly.append("    movsd [rsp], xmm0")
-                self.assembly.append("    fld qword [rsp]")     # st0 = bölünen, st1 = bölen
+                self.assembly.append("    fld qword [rsp]")     
                 fprem_loop = self.get_new_label("FPREM_LOOP")
                 self.assembly.append(f"{fprem_loop}:")
-                self.assembly.append("    fprem")               # Kalanı hesapla
+                self.assembly.append("    fprem")               
                 self.assembly.append("    fnstsw ax")
-                self.assembly.append("    test ah, 4")          # C2 bayrağı kontrolü (işlem bitti mi?)
+                self.assembly.append("    test ah, 4")          
                 self.assembly.append(f"    jnz {fprem_loop}")
-                self.assembly.append("    fstp qword [rsp]")    # Kalanı yığıttan belleğe al
-                self.assembly.append("    movsd xmm0, [rsp]")   # Kalanı xmm0'a koy
-                self.assembly.append("    fstp st0")            # Böleni yığıttan temizle
+                self.assembly.append("    fstp qword [rsp]")    
+                self.assembly.append("    movsd xmm0, [rsp]")   
+                self.assembly.append("    fstp st0")            
                 self.assembly.append("    add rsp, 16")
                 self.assembly.append("    movq rax, xmm0")
             elif op == '^':
@@ -1481,7 +1477,7 @@ class CodeGen:
                 self.assembly.append("    movzx rax, al")
 
         else:    
-            # --- STANDART INTEGER İŞLEMLERİ (ALU) ---
+            # --- INTEGER NUMBERS ---
             self.assembly.append("    push rax")
             self.generate(node.left_node)
             self.assembly.append("    pop rbx")
@@ -1549,7 +1545,7 @@ class CodeGen:
             self.assembly.append("    syscall")
 
     def visit_BlockNode(self, node):
-        """Süslü parantez içi kod bloklarını (satırlar) sırayla Assembly'e çevir."""
+        """Converts the code blocks (lines) inside curly braces to Assembly in order."""
         self.enter_scope()
 
         for statement in node.statements:
@@ -1558,7 +1554,7 @@ class CodeGen:
         self.exit_scope()
 
     def visit_FuncCallNode(self, node):
-        """Fonskiyon çağır ve parametreleri System V standartlarına göre diz."""
+        """Calls the function and creates the Kernel Standard ABI Specifications."""
         func_name = node.node_to_call.var_name_tok[1]
 
         if func_name == 'print':
@@ -1663,17 +1659,17 @@ class CodeGen:
 
 
         elif func_name == 'len':
-            self.generate(node.arg_nodes[0]) # Parametreyi RAX'a al
+            self.generate(node.arg_nodes[0]) # Take the parameter into RAX
             self.assembly.append("    mov rdi, rax")
             self.assembly.append("    call get_len")
             return
         
         elif func_name == 'realloc':
-            self.generate(node.arg_nodes[1]) # İkinci parametre (yeni boyut)
+            self.generate(node.arg_nodes[1]) # Second parameter (new size)
             self.assembly.append("    push rax")
-            self.generate(node.arg_nodes[0]) # Birinci parametre (eski pointer)
+            self.generate(node.arg_nodes[0]) # First parameter (old pointer)
             self.assembly.append("    mov rdi, rax")
-            self.assembly.append("    pop rsi") # İkinci parametreyi RSI'ye çek
+            self.assembly.append("    pop rsi") # Pull the second parameter into RSI
             self.assembly.append("    call realloc_mem")
             return
 
@@ -1777,7 +1773,7 @@ class CodeGen:
                 self.assembly.append("    push rax")
 
 
-        # x86-64 Standart Parametre Yazmaçları 
+        # x86-64 Standard Parameter Registers 
         arg_registers = ['rdi', 'rsi', 'rdx', 'rcx', 'r8', 'r9']
 
         for i in range(min(6, arg_count)):
@@ -1799,7 +1795,7 @@ class CodeGen:
             self.assembly.append(f"    add rsp, {extra_args * 8}")
 
     def visit_FuncDefNode(self, node):
-        """Yeni fonksiyon oluştur ve Scope ayarlarını yap."""
+        """Creates a new function and configures Scope settings."""
         if node.modifier_tok and node.modifier_tok[1] == 'extern':
             func_name = node.func_name_tok[1]
             self.data_section.append(f"; extern {func_name}")
@@ -1920,7 +1916,7 @@ class CodeGen:
         self.assembly.append(f"    lea rax, [rel {func_lbl}]")
 
     def visit_ReturnNode(self, node):
-        """Fonksiyondan bir değer çıkar."""
+        """Returns a value from the function."""
         if node.node_to_return:
             self.generate(node.node_to_return)
 
@@ -1932,7 +1928,7 @@ class CodeGen:
             self.assembly.append("    ret")
 
     def visit_StringNode(self, node):
-        """Metin verisini .data olarak yazar ve adresi RAX'e koyar."""
+        """Writes the text data as a .data file and places the address in RAX."""
         self.string_count += 1
         label = f"str_{self.string_count}"
 
@@ -1993,7 +1989,7 @@ class CodeGen:
             self.generate(node.body_node)
 
     def visit_KeywordNode(self, node):
-        """True, False ve Null'u Binary'e çevir."""
+        """Converts True, False, and Null to Binary."""
         val = node.tok[1]
         if val == 'true':
             self.assembly.append("    mov rax, 1")
@@ -2077,11 +2073,10 @@ class CodeGen:
         self.assembly.append(f"{bounds_ok}:")
 
         if eval_type == 'char':
-            # String karakteri için 1 byte oku (Örn: metin[2])
+            # Read 1 byte for a char
             self.assembly.append("    movzx rax, byte [rax + rbx]")
         else:
-            # Standart dizi elemanı için 8 byte atla (Örn: liste[2])
-            self.assembly.append("    shl rbx, 3") # rbx'i 8 ile çarp
+            self.assembly.append("    shl rbx, 3") # rbx*8
             self.assembly.append("    mov rax, qword [rax + rbx]")
 
     def visit_IndexAssignNode(self, node):
@@ -2095,7 +2090,7 @@ class CodeGen:
 
         self.generate(node.left_node)           
         self.assembly.append("    pop rbx")      # RBX = index
-        self.assembly.append("    pop rcx")      # RCX = yeni deger
+        self.assembly.append("    pop rcx")      # RCX = new value
 
         bounds_fail = self.get_new_label("BOUNDS_FAIL")
         bounds_ok = self.get_new_label("BOUNDS_OK")
@@ -2137,11 +2132,11 @@ class CodeGen:
 
         if eval_type == 'char':
             if op == '=':
-                self.assembly.append("    mov byte [rax + rbx], cl") # Sadece tek byte (cl) yaz
+                self.assembly.append("    mov byte [rax + rbx], cl") # Writes 1 byte
             else:
                 raise Exception("Semantik Error: Invalid operation type on chars.")
         else:
-            self.assembly.append("    shl rbx, 3") # Index * 8 yap (Pointer Aritmetiği)
+            self.assembly.append("    shl rbx, 3") # Index*8
             if op == '=':
                 self.assembly.append("    mov qword [rax + rbx], rcx")
             elif op in ('+=', '=+'):
@@ -2191,7 +2186,7 @@ class CodeGen:
                 self.assembly.append("    mov qword [rax + rbx], rcx")
 
     def visit_ClassDefNode(self, node):
-        """Class şablonunu compile time'da hafıza haritasına kaydeder."""
+        """Saves the class template to the memory map at compile time."""
         class_name = node.class_name_tok[1]
         self.current_class = class_name
         for method in node.methods:
@@ -2220,7 +2215,7 @@ class CodeGen:
         self.assembly.append(f"    mov rax, qword [rax + {offset}]")
 
     def visit_MemberAssignNode(self, node):
-        """nesne.alan = değer ataması yapar."""
+        """Assigns a value to the object.field."""
         obj_type = self._get_obj_type(node.left_node)
 
         if not obj_type or obj_type == 'var':
@@ -2287,7 +2282,7 @@ class CodeGen:
             self.assembly.append(f"    mov qword [rax + {offset}], rcx")
 
     def visit_NewObjectNode(self, node):
-        """new Class() yapısını gördüğünde sınıf boyutunu hesaplayıp alloc() çağırır."""
+        """Calculates the class size and calls `alloc()` When encounters the `new Class()` structure."""
         class_name = node.class_name_tok[1]
 
         if class_name not in self.class_layouts:
@@ -2334,7 +2329,7 @@ class CodeGen:
         self.assembly.append("    pop rax")
 
     def visit_MethodDefNode(self, node):
-        """Sınıf içine yazılmış bir metodu Assembly'e çevirir."""
+        """Converts a method written within a class to Assembly."""
         if not self.current_class:
             raise Exception("Compiling Error: Methods can only be defined in a class.")
         
@@ -2396,7 +2391,7 @@ class CodeGen:
         self.assembly = main_assembly
 
     def visit_MethodCallNode(self, node):
-        """nesne.metot() çağrısını Assembly'e çevirir ve pointer'ı gizlice yollar."""
+        """Translates the `object.method()` call to Assembly and secretly passes the pointer."""
         obj_type = self._get_obj_type(node.left_node)
 
         if not obj_type or obj_type == 'var':
@@ -2507,7 +2502,7 @@ class CodeGen:
         self.assembly.append(f"{end_label}:")
 
     def visit_CastNode(self, node):
-        """Kapsamlı Tip Dönüşümü (Cast) Yapar."""
+        """Does Type Casting."""
         self.generate(node.node)
         target_type = node.type_tok[1]
         source_type = getattr(node.node, 'eval_type', 'int')
@@ -2641,26 +2636,7 @@ if __name__ == '__main__':
     from semantic import SemanticAnalyzer
 
     test_code = """
-    // --- 1. SERBEST (CLASS-BAĞIMSIZ) FONKSİYON TESTİ ---
-    define topla(int a, int b) -> int {
-        return a + b;
-    }
-
-    // --- 2. CLASS VE METOT TESTİ ---
-    class Matematik {
-        define carp(int x, int y) -> int {
-            return x * y;
-        }
-    }
-
-    var mat = new Matematik();
-
-    print("Serbest topla(12, 28): ");
-    print(topla(12, 28)); // 40 basmalı
-
-    print("\\nMetod carp(6, 7): ");
-    print(mat.carp(6, 7)); // 42 basmalı
-    print("\\n");
+    
     """
 
     #1. FRONTEND
