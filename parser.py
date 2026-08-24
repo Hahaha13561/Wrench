@@ -1,15 +1,14 @@
 class NumberNode:
-    """Ağacın en uç yaprakları sadece sayı değeri tutarlar."""
+    """Number Nodes."""
     def __init__(self, tok):
-        self.tok = tok #Lexer'dan gelen token
+        self.tok = tok #Lexer token
 
     def __repr__(self):
-        #Okunaklılık için:
         return f'{self.tok[1]}'
     
 
 class VarAccessNode:
-    """Değişken çağırma düğümü"""
+    """Variable Access Node."""
     def __init__(self, var_name_tok):
         self.var_name_tok = var_name_tok
 
@@ -18,7 +17,7 @@ class VarAccessNode:
 
 
 class KeywordNode:
-    """True, False ve Null gibi sabit dil kelimeleri."""
+    """Keyword Node."""
     def __init__(self, tok):
         self.tok = tok
 
@@ -26,17 +25,8 @@ class KeywordNode:
         return f'{self.tok[1]}'
 
 
-class TriggerNode:
-    """Hata fırlatma node'u"""
-    def __init__(self, err_value_node):
-        self.err_value_node = err_value_node
-
-    def __repr__(self):
-        return f"TRIGGER ERROR({self.err_value_node})"
-
-
 class IfNode:
-    """if, butif, ve else yapılarını barındıran node."""
+    """If Node, containing 'if', 'butif' and 'else' cases."""
     def __init__(self, cases, else_case):
         self.cases = cases
         self.else_case = else_case
@@ -51,7 +41,7 @@ class IfNode:
 
 
 class UnaryOpNode:
-    """Tekil işlemler node'u."""
+    """Single Operation Node."""
     def __init__(self, op_tok, node):
         self.op_tok = op_tok
         self.node = node
@@ -61,7 +51,7 @@ class UnaryOpNode:
         
 
 class WhileNode:
-    """While döngüsü node'u."""
+    """While Node."""
     def __init__(self, condition, body):
         self.condition_node = condition
         self.body_node = body
@@ -71,7 +61,7 @@ class WhileNode:
     
 
 class LimitsNode:
-    """Range Array döndüren fonksiyon."""
+    """Limits Node, returns Range Array."""
     def __init__(self, start_node, end_node):
         self.start_node = start_node
         self.end_node = end_node
@@ -81,7 +71,7 @@ class LimitsNode:
 
 
 class ForNode:
-    """For döngüsü."""
+    """For Node."""
     def __init__(self, var_name_tok, iter_node, body):
         self.var_name_tok = var_name_tok
         self.iter_node = iter_node
@@ -92,6 +82,7 @@ class ForNode:
 
 
 class WhenNode:
+    """When Node."""
     def __init__(self, condition, body, isglobal=False):
         self.condition = condition
         self.body = body
@@ -103,7 +94,7 @@ class WhenNode:
 
 
 class VarAssignNode:
-    """Değişken atama düğümü"""
+    """Variable Assign Node."""
     def __init__(self,modifier_tok, type_tok, var_name_tok, value_node):
         self.modifier_tok = modifier_tok
         self.type_tok = type_tok
@@ -116,7 +107,7 @@ class VarAssignNode:
     
 
 class BinOpNode:
-    """Binary Operation Node: (İkili İşlem Düğümü)"""
+    """Binary Operation Node."""
     def __init__(self, left_node, op_tok, right_node):
         self.left_node = left_node
         self.op_tok = op_tok
@@ -127,7 +118,7 @@ class BinOpNode:
     
 
 class BlockNode:
-    """Kod bloğu node'larını temsil eder({}). """
+    """Code Block Node. """
     def __init__(self, statements):
         self.statements = statements
 
@@ -137,7 +128,7 @@ class BlockNode:
         
     
 class FuncCallNode:
-    """Fonksiyon çağrısı node'u."""
+    """Function Call Node."""
     def __init__(self, node_to_call, arg_nodes):
         self.node_to_call = node_to_call
         self.arg_nodes = arg_nodes
@@ -148,7 +139,7 @@ class FuncCallNode:
 
 
 class FuncDefNode:
-    """Fonksiyon tanımlama node'u."""
+    """Function Define Node."""
     def __init__(self, modifier_tok, func_name_tok, args, body_node, return_type_tok=None):
         self.modifier_tok = modifier_tok
         self.func_name_tok = func_name_tok
@@ -164,7 +155,7 @@ class FuncDefNode:
 
 
 class ClassDefNode:
-    """Class Tanımlama Node'u."""
+    """Class Define Node."""
     def __init__(self, class_name_tok, body_node):
         self.class_name_tok = class_name_tok
         self.body_node = body_node
@@ -174,7 +165,7 @@ class ClassDefNode:
         
 
 class ReAssignNode:
-    """Var olan node'a yeni değer ekleme (reassign) node'u."""
+    """Reassign Node."""
     def __init__(self, var_name_tok, op_tok, value_node):
         self.var_name_tok = var_name_tok
         self.op_tok = op_tok
@@ -185,7 +176,7 @@ class ReAssignNode:
 
 
 class TriggerNode:
-    """Hata fırlatma node'u"""
+    """Trigger Node."""
     def __init__(self, err_value_node):
         self.err_value_node = err_value_node
 
@@ -194,7 +185,7 @@ class TriggerNode:
 
 
 class AttemptNode:
-    """Hata yakalama node'u."""
+    """Error Handling Node, containing 'attempt', 'exclude' and 'final' cases. """
     def __init__(self, attempt_body, exclude_body, final_body):
         self.attempt_body = attempt_body
         self.exclude_body = exclude_body
@@ -210,7 +201,7 @@ class AttemptNode:
 
 
 class AllegeNode:
-    """Alleging (Doğrulama) node'u."""
+    """Allege Node."""
     def __init__(self, condition):
         self.condition = condition
 
@@ -219,7 +210,7 @@ class AllegeNode:
 
 
 class SyncUnitNode:
-    """Sync gruplama node'u."""
+    """Unit Node."""
     def __init__(self, unit_name_tok, body_node):
         self.unit_name_tok = unit_name_tok
         self.body_node = body_node
@@ -229,7 +220,7 @@ class SyncUnitNode:
 
 
 class WithNode:
-    """Gruplanmış üniteleri bağlama"""
+    """With Node."""
     def __init__(self, unit_name_tok, body_node, is_wait=False):
         self.unit_name_tok = unit_name_tok
         self.body_node = body_node
@@ -241,7 +232,7 @@ class WithNode:
 
 
 class ReturnNode:
-    """Geri döndürme (Return) node'u."""
+    """Return Node."""
     def __init__(self, node_to_return):
         self.node_to_return = node_to_return
 
@@ -250,19 +241,19 @@ class ReturnNode:
 
 
 class BreakNode:
-    """Döngü kırma (break) node'u."""
+    """Break Node."""
     def __repr__(self):
         return "BREAK"
     
 
 class GoonNode:
-    """Döngüde devam etme node'u."""
+    """Go On Node."""
     def __repr__(self):
         return "GOON"
 
 
 class CastNode:
-    """Tip dönüşümü node'u."""
+    """Type Casting Node."""
     def __init__(self, node, type_tok):
         self.node = node
         self.type_tok = type_tok
@@ -272,7 +263,7 @@ class CastNode:
         
 
 class DeleteNode:
-    """Bellekten temizleme node'u."""
+    """Delete Node."""
     def __init__(self, target_node):
         self.target_node = target_node
 
@@ -281,7 +272,7 @@ class DeleteNode:
 
 
 class LinkNode:
-    """Dış bağlantı kurma node'u."""
+    """Link Node."""
     def __init__(self, target_str_tok):
         self.target_str_tok = target_str_tok
 
@@ -290,7 +281,7 @@ class LinkNode:
 
 
 class IncludeNode:
-    """Modül içe aktarma node'u."""
+    """Include Node."""
     def __init__(self, module_tok, item_tok=None, alias_tok=None):
         self.module_tok = module_tok
         self.item_tok = item_tok
@@ -304,7 +295,7 @@ class IncludeNode:
 
 
 class AnFuncNode:
-    """Anonim fonksiyon node'u."""
+    """Anonymous Function Node."""
     def __init__(self, args, body_node):
         self.args = args
         self.body_node = body_node
@@ -315,7 +306,7 @@ class AnFuncNode:
 
 
 class StringNode:
-    """String verilerini tutan node."""
+    """String Node."""
     def __init__(self, tok):
         self.tok = tok
 
@@ -324,14 +315,14 @@ class StringNode:
 
 
 class IndexAccessNode:
-    """Bellekteki adresten değer okuma node'u."""
+    """Index Access Node."""
     def __init__(self, left_node, index_node):
         self.left_node = left_node
         self.index_node = index_node
 
 
 class IndexAssignNode:
-    """Hafızadaki adrese değer verir."""
+    """Index Assign Node."""
     def __init__(self, left_node, index_node, op_tok, value_node):
         self.left_node = left_node
         self.index_node = index_node
@@ -340,7 +331,7 @@ class IndexAssignNode:
 
 
 class ClassDefNode:
-    """Sınıf tanımlama şablon Node'u."""
+    """Class Define Node."""
     def __init__(self, class_name_tok,parent_class_tok, fields, methods):
         self.class_name_tok =class_name_tok
         self.parent_class_tok = parent_class_tok
@@ -349,14 +340,14 @@ class ClassDefNode:
 
 
 class MemberAccessNode:
-    """Nesne içindeki değişkene erişim node'u."""
+    """Member Access Node."""
     def __init__(self, left_node, member_name_tok):
         self.left_node = left_node
         self.member_name_tok = member_name_tok
 
 
 class MemberAssignNode:
-    """Nesne içindeki değişkene atama node'u."""
+    """Member Assign Node."""
     def __init__(self, left_node, member_name_tok, op_tok, value_node):
         self.left_node = left_node
         self.member_name_tok = member_name_tok
@@ -365,14 +356,14 @@ class MemberAssignNode:
 
 
 class NewObjectNode:
-    """Yeni nesne yaratma node'u."""
+    """New Object Node."""
     def __init__(self, class_name_tok, arg_nodes):
         self.class_name_tok = class_name_tok
         self.arg_nodes = arg_nodes
 
 
 class MethodDefNode:
-    """Sınıf içinde tanımlanan fonksiyon."""
+    """Method Define Node."""
     def __init__(self, modifier_tok, func_name_tok, args, body_node, return_type_tok=None):
         self.modifier_tok = modifier_tok
         self.func_name_tok = func_name_tok    
@@ -382,7 +373,7 @@ class MethodDefNode:
 
 
 class MethodCallNode:
-    """Nesne üzerinden metod çağırma"""
+    """Method Call Node."""
     def __init__(self, left_node, method_name_tok, arg_nodes):
         self.left_node = left_node
         self.method_name_tok = method_name_tok
@@ -390,18 +381,19 @@ class MethodCallNode:
 
 
 class ArrayLiteralNode:
-    """Array Literal oluşturma node'u."""
+    """Array Literal Node."""
     def __init__(self, elements):
         self.elements = elements
         
 
 class SwitchNode:
-    """Switch-Case kontrol node'u."""
+    """Switch-Case Node."""
     def __init__(self, switch_expr, cases, default_case):
         self.switch_expr = switch_expr
         self.cases = cases
         self.default_case = default_case
 
+# Built-in Functions
 BUILTIN_FUNCTION = {
     'print', 'printf', 'len', 'realloc', 'type_of', 'read', 'read_int', 'print_float', 'print_hex', 'exit', 'alloc', 'sys_argc', 
     'sys_argv', 'get_mem', 'get_mem32', 'addr_of', 'ptr_to', 'syscall', 'free'
@@ -415,7 +407,7 @@ class Parser:
         self.advance()
 
     def advance(self):
-        """Bir sonraki token'a geçiş. (Advancing)"""
+        """Advances to the next token."""
         self.tok_idx += 1
         if self.tok_idx < len(self.tokens):
             self.current_tok = self.tokens[self.tok_idx]
@@ -424,28 +416,17 @@ class Parser:
         return self.current_tok
     
     def peek(self):
-        """Mevcut token'ı değiştirmeden peek yapma (Veriyi değiştirmeden inceleme)"""
+        """Peeks current token."""
         next_idx = self.tok_idx + 1
         if next_idx < len(self.tokens):
             return self.tokens[next_idx]
         return None
     
     def throw(self, message):
+        """Throws an error."""
         if self.current_tok:
             line = self.current_tok[2]
             col = self.current_tok[3]
-
-            #Debug code
-            start_idx = max(0, self.tok_idx - 5)
-            end_idx = min(len(self.tokens), self.tok_idx + 6)
-            context = self.tokens[start_idx:end_idx]
-
-            print("\n---DEBUG---")
-            for idx, t in enumerate(context, start=start_idx):
-                pointer = "==>" if idx == self.tok_idx else "    "
-                print(f"{pointer} [{idx}] Token: {t}")
-            print("-----------\n")
-            #Debug code end
 
             raise Exception(f"{message} (Line: {line}, Column: {col})")
         else:
@@ -661,9 +642,9 @@ class Parser:
         return node
 
 
-    #2. Çarpma, Bölme, Mod ve Üs Alma
+    #2. Multiplication, Division, Modulo, and Exponentiation
     def term(self):
-        left = self.factor() #Önce solu al
+        left = self.factor() #Left first
 
         while self.current_tok is not None and self.current_tok[0] == 'OP_SINGLE' and self.current_tok[1] in ('*', '/', '%', '^'):
             op_tok = self.current_tok
@@ -673,7 +654,7 @@ class Parser:
 
         return left
     
-    #3. Toplama ve Çıkarma
+    #3. Addition and Subtraction
     def expr(self):
         left = self.term()
 
@@ -685,7 +666,7 @@ class Parser:
 
         return left
     
-    #3.5 Comparision and Logic Statements
+    #4 Comparision and Logic Statements
     def rel_expr(self):
         left = self.expr()
 
@@ -730,7 +711,7 @@ class Parser:
 
         return left
     
-    #4. Statements
+    #5. Statements
     def statement(self):
 
         # State 1: Class
@@ -1238,16 +1219,16 @@ class Parser:
 
         return expr_node 
 
-    #5. Kod blokları { }
+    #5. Code Blocks
     def block(self):
-        # { ile başlanması gerekir.
+        # Must start with {
         if self.current_tok is None or self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != '{':
             self.throw("Syntax Error: Expected '{' after Block" )
         self.advance()
 
         statements = []
 
-        #Dosya bitene kadar ya da } görülene kadar statement'ları oku.
+        #Read until file end or }
 
         while self.current_tok is not None and not (self.current_tok[0] == 'PUNCTUATION' and self.current_tok[1] == '}'):
             statements.append(self.statement())
@@ -1259,7 +1240,7 @@ class Parser:
         return BlockNode(statements)
 
 
-    #Parse et
+    #Parse
     def parse(self):
         statements = []
         while self.current_tok is not None:
@@ -1268,59 +1249,17 @@ class Parser:
 
 
 
-#Test kısmı
-
+#Test
 if __name__ == '__main__':
     from lexer import tokenize
     test_code = """
-    // --- 1. OOP, INHERITANCE, UPCAST/DOWNCAST TESTI ---
-    class Karakter {
-        int can;
-    }
-    
-    class Oyuncu extends Karakter {
-        int seviye;
-    }
-    
-    var asil_oyuncu = new Oyuncu();
-    asil_oyuncu.can = 100;
-    asil_oyuncu.seviye = 25;
-    
-    Karakter npc = asil_oyuncu; // UPCAST
-    var donusen_oyuncu = npc cast Oyuncu; // DOWNCAST
-    
-    print("Downcast Sonrasi Oyuncu Seviyesi: ");
-    print_int(donusen_oyuncu.seviye); // 25 yazdırmalı
-    print("\\n");
-    free(asil_oyuncu);
 
-
-    // --- 2. STRING KIYASLAMA VE KARAKTER (CHAR) INDEXLEME TESTI ---
-    var metin1 = "Wrench";
-    var metin2 = "Wrench";
-    var metin3 = "Zebra";
-    
-    if (metin1 =? metin2) {
-        print("Metin1 ve Metin2 Ayni! (strcmp calisiyor)\\n");
-    }
-    
-    if (metin3 > metin1) {
-        print("Zebra alfabetik olarak Wrench'ten buyuktur!\\n");
-    }
-    
-    // Karakter değiştirme: "Zebra" -> "Cobra"
-    metin3[0] = "C" cast char;
-    metin3[1] = "o" cast char;
-    
-    print("Modifiye Edilmis String: ");
-    print(metin3); // Cobra yazdırmalı
-    print("\\n");
     """
     
     tokens = tokenize(test_code)
     parser = Parser(tokens)
     ast = parser.parse()
     
-    print("Parser Çıktısı (AST Ağacı):")
+    print("Parser Output (AST Tree):")
     for node in ast:
         print(node) 
