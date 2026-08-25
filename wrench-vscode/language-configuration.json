@@ -1,0 +1,38 @@
+{
+  "$schema": "vscode://schemas/language-configuration",
+  "comments": {
+    "lineComment": "//",
+    "blockComment": ["/*", "*/"]
+  },
+  "brackets": [
+    ["{", "}"],
+    ["[", "]"],
+    ["(", ")"]
+  ],
+  "autoClosingPairs": [
+    { "open": "{", "close": "}" },
+    { "open": "[", "close": "]" },
+    { "open": "(", "close": ")" },
+    { "open": "\"", "close": "\"", "notIn": ["string"] },
+    { "open": "'", "close": "'", "notIn": ["string", "comment"] },
+    { "open": "`", "close": "`", "notIn": ["string", "comment"] }
+  ],
+  "surroundingPairs": [
+    ["{", "}"],
+    ["[", "]"],
+    ["(", ")"],
+    ["\"", "\""],
+    ["'", "'"],
+    ["`", "`"]
+  ],
+  "folding": {
+    "markers": {
+      "start": "^\\s*(/\\#|/\\*)",
+      "end": "^\\s*(\\#/|\\*/)"
+    }
+  },
+  "indentationRules": {
+    "increaseIndentPattern": "^((?!//).)*(\\{|\\(|\\[|\\b(if|else|butif|while|for|switch|case|default|class|define|attempt|exclude|final|when|with|sync|async)\\b(?!.*\\}))",
+    "decreaseIndentPattern": "^\\s*(\\}|\\)|\\]|\\b(case|default|else|butif|exclude|final)\\b)"
+  }
+}

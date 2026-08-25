@@ -1,0 +1,199 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Wrench",
+  "scopeName": "source.wrench",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#numbers" },
+    { "include": "#control_keywords" },
+    { "include": "#declaration_keywords" },
+    { "include": "#operator_keywords" },
+    { "include": "#value_keywords" },
+    { "include": "#types" },
+    { "include": "#builtins" },
+    { "include": "#user_functions" },
+    { "include": "#user_classes"},
+    { "include": "#user_variables"},
+    { "include": "#operators" },
+    { "include": "#punctuation" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.wrench",
+          "match": "//.*$"
+        },
+        {
+          "name": "comment.block.documentation.wrench",
+          "begin": "/\\#",
+          "end": "\\#/"
+        },
+        {
+          "name": "comment.block.wrench",
+          "begin": "/\\*",
+          "end": "\\*/"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.wrench",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.wrench",
+              "match": "\\\\."
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.single.wrench",
+          "begin": "'",
+          "end": "'",
+          "patterns": [
+            {
+              "name": "constant.character.escape.wrench",
+              "match": "\\\\."
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.backtick.wrench",
+          "begin": "`",
+          "end": "`"
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.hex.wrench",
+          "match": "\\b0[xX][0-9a-fA-F]+\\b"
+        },
+        {
+          "name": "constant.numeric.float.wrench",
+          "match": "\\b[0-9]+\\.[0-9]+\\b"
+        },
+        {
+          "name": "constant.numeric.decimal.wrench",
+          "match": "\\b[0-9]+\\b"
+        }
+      ]
+    },
+    "control_keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.wrench",
+          "match": "\\b(if|else|butif|while|for|limits|in|switch|case|default|break|goon|when|with|attempt|exclude|final|trigger|allege)\\b"
+        }
+      ]
+    },
+    "declaration_keywords": {
+      "patterns": [
+        {
+          "name": "keyword.declaration.wrench",
+          "match": "\\b(define|class|extends|extern|include|from|link|global|anfunc|public|private|async|sync|return|delete)\\b"
+        }
+      ]
+    },
+    "operator_keywords": {
+      "patterns": [
+        {
+          "name": "keyword.operator.word.wrench",
+          "match": "\\b(and|or|not|nand|nor|xor|xnor|is|same|as|cast|await|wait|new)\\b"
+        }
+      ]
+    },
+    "value_keywords": {
+      "patterns": [
+        {
+          "name": "constant.language.wrench",
+          "match": "\\b(true|false|null|this)\\b"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "storage.type.wrench",
+          "match": "\\b(int|integer|double|char|str|string|bool|var|unit|hex|ptr|pointer|address)\\b"
+        }
+      ]
+    },
+    "builtins": {
+      "patterns": [
+        {
+          "name": "support.function.builtin.wrench",
+          "match": "\\b(print|printf|print_float|print_hex|read|read_int|len|type_of|alloc|realloc|free|str_ndup|get_mem|get_mem32|addr_of|ptr_to|sys_argc|sys_argv|syscall|exit)\\b"
+        }
+      ]
+    },
+    "user_functions": {
+      "patterns": [
+        {
+          "name": "entity.name.function.wrench",
+          "match": "\\b([A-Za-z_]\\w*)\\s*(?=\\()"
+        }
+      ]
+    },
+    "user_classes": {
+      "patterns": [
+        {
+          "match": "\\b(class|extends|new)\\s+([A-Za-z_]\\w*)",
+          "captures": {
+            "1": { "name": "keyword.declaration.wrench" },
+            "2": { "name": "entity.name.type.class.wrench" }
+          }
+        }
+      ]
+    },
+    "user_variables": {
+      "patterns": [
+        {
+          "name": "variable.other.readwrite.wrench",
+          "match": "\\b[A-Za-z_]\\w*\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.arrow.wrench",
+          "match": "->"
+        },
+        {
+          "name": "keyword.operator.assignment.wrench",
+          "match": "(\\+=|=\\+|-=|=-|\\*=|=\\*|/=|\\=/|%=|=%|\\^=|=\\^|=)"
+        },
+        {
+          "name": "keyword.operator.comparison.wrench",
+          "match": "(\\=\\?|\\?\\=|\\!\\=|\\=\\!|>=|=>|<=|\\=<|<|>)"
+        },
+        {
+          "name": "keyword.operator.arithmetic.wrench",
+          "match": "(\\+|\\-|\\*|\\/|\\%|\\^)"
+        }
+      ]
+    },
+    "punctuation": {
+      "patterns": [
+        {
+          "name": "punctuation.separator.wrench",
+          "match": "[;,\\.]"
+        },
+        {
+          "name": "punctuation.section.bracket.wrench",
+          "match": "[\\[\\]\\(\\)\\{\\}]"
+        },
+        {
+          "name": "punctuation.separator.colon.wrench",
+          "match": ":"
+        }
+      ]
+    }
+  }
+}

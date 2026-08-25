@@ -1,0 +1,49 @@
+{
+  "name": "wrench-vscode",
+  "displayName": "Wrench Language Extension",
+  "description": "Language support, syntax highlighting, and tools for Wrench 0.1.2",
+  "version": "0.1.2",
+  "publisher": "AstroDuccs",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onLanguage:wrench"
+  ],
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "python3 scripts/build_grammar.py && tsc -p ./",
+    "watch": "tsc -w -p ./",
+    "build-grammar": "python3 scripts/build_grammar.py"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.75.0",
+    "typescript": "^5.0.0"
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "wrench",
+        "aliases": [
+          "Wrench",
+          "wrench"
+        ],
+        "extensions": [
+          ".wr"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "wrench",
+        "scopeName": "source.wrench",
+        "path": "./syntaxes/wrench.tmLanguage.json"
+      }
+    ]
+  }
+}
