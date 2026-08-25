@@ -3,6 +3,7 @@ import sys
 import os 
 import subprocess
 import copy
+import json
 from lexer import tokenize
 from parser import Parser
 from semantic import SemanticAnalyzer
@@ -105,6 +106,38 @@ def resolve_imports(ast, current_dir, linked_objects, imported_asts=None, fully_
 
     return new_ast
 
+def output_symbols(input_file, is_strict=True):
+    """Parses the source code, analyzes semantics and outputs the AST as JSON."""
+    if not os.path.exists(input_file):
+        print(json.dumps({"error": f"File '{input_file}' not found."}))
+        sys.exit(1)
+
+    try:
+        with open(input_file, 'r', encoding='utf-8') as f:
+            source_code = f.read()
+
+        tokens = tokenize(source_code)
+        parser = Parser(tokens)
+        ast = parser.parse()
+
+        linked_objects = set()
+        current_dir = os.path.dirname(os.path.abspath(input_file))
+        ast = resolve_imports(ast, current_dir, linked_objects)
+
+        analyzer = SemanticAnalyzer(strict_mode=is_strict)
+        analyzer.analyze(ast)
+
+        symbol_data = {
+            "functions": getattr(analyzer, 'functions', {}),
+            "classes": getattr(analyzer, 'classes', {}),
+            "globals": getattr(analyzer, 'global_symbols', {})
+        }
+
+        print(json.dumps(symbol_data, indent=2, default=str))
+
+    except Exception as e:
+        print(json.dumps({"error": str(e)}))
+        sys.exit(1)
 
 def compile_file(input_file, output_name=None, is_strict=True, keep_temps=False):
     if not input_file.endswith('.wr'):
@@ -190,11 +223,16 @@ if __name__ == '__main__':
     argparser.add_argument("-o", "--output", help="Executable file name to be produced", default=None)
     argparser.add_argument("--no-strict", "-ns", action="store_true", help="Turns off strict mode in semantic analyzation.")
     argparser.add_argument("-k", "--keep", action="store_true", help= "Keeps the temporary files created during compilation (.asm/.o)")
-    argparser.add_argument("-r", "--run", action="store_true", help="Automatically run the program and delete the executable.")
+    argparser.add_argument("-r", "--run", action="store_true", help="Automatically runs the program and delete the executable.")
+    argparser.add_argument("--symbols", action="store_true", help="Gives the output symbol table as JSON.")
 
     args = argparser.parse_args()
 
     strict_flag = not args.no_strict
+
+    if args.symbols:
+        output_symbols(args.input, strict_flag)
+        sys.exit(0)
 
     compile_file(args.input, args.output, strict_flag, args.keep)
 
