@@ -3,20 +3,48 @@
   "name": "Wrench",
   "scopeName": "source.wrench",
   "patterns": [
-    { "include": "#comments" },
-    { "include": "#strings" },
-    { "include": "#numbers" },
-    { "include": "#control_keywords" },
-    { "include": "#declaration_keywords" },
-    { "include": "#operator_keywords" },
-    { "include": "#value_keywords" },
-    { "include": "#types" },
-    { "include": "#builtins" },
-    { "include": "#user_functions" },
-    { "include": "#user_classes"},
-    { "include": "#user_variables"},
-    { "include": "#operators" },
-    { "include": "#punctuation" }
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#control_keywords"
+    },
+    {
+      "include": "#declaration_keywords"
+    },
+    {
+      "include": "#operator_keywords"
+    },
+    {
+      "include": "#value_keywords"
+    },
+    {
+      "include": "#types"
+    },
+    {
+      "include": "#builtins"
+    },
+    {
+      "include": "#user_functions"
+    },
+    {
+      "include": "#user_classes"
+    },
+    {
+      "include": "#user_variables"
+    },
+    {
+      "include": "#operators"
+    },
+    {
+      "include": "#punctuation"
+    }
   ],
   "repository": {
     "comments": {
@@ -145,8 +173,12 @@
         {
           "match": "\\b(class|extends|new)\\s+([A-Za-z_]\\w*)",
           "captures": {
-            "1": { "name": "keyword.declaration.wrench" },
-            "2": { "name": "entity.name.type.class.wrench" }
+            "1": {
+              "name": "keyword.declaration.wrench"
+            },
+            "2": {
+              "name": "entity.name.type.class.wrench"
+            }
           }
         }
       ]
@@ -167,15 +199,15 @@
         },
         {
           "name": "keyword.operator.assignment.wrench",
-          "match": "(\\+=|=\\+|-=|=-|\\*=|=\\*|/=|\\=/|%=|=%|\\^=|=\\^|=)"
+          "match": "(=|\\+=|=\\+|-=|=-|\\*=|=\\*|\\/=|=\\/|%=|=%|\\^=|=\\^)"
         },
         {
           "name": "keyword.operator.comparison.wrench",
-          "match": "(\\=\\?|\\?\\=|\\!\\=|\\=\\!|>=|=>|<=|\\=<|<|>)"
+          "match": "(=\\?|\\?=|!=|=!|>=|=>|<=|=<|<|>)"
         },
         {
           "name": "keyword.operator.arithmetic.wrench",
-          "match": "(\\+|\\-|\\*|\\/|\\%|\\^)"
+          "match": "(\\+|-|\\*|\\/|%|\\^)"
         }
       ]
     },
