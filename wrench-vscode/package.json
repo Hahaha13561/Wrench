@@ -3,7 +3,11 @@
   "displayName": "Wrench Language Extension",
   "description": "Language support, syntax highlighting, and tools for Wrench 0.1.2",
   "version": "0.1.2",
-  "publisher": "AstroDuccs",
+  "publisher": "Hayrettin Bugra Arslan",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Hahaha13561/Wrench.git"
+  },
   "engines": {
     "vscode": "^1.75.0"
   },
