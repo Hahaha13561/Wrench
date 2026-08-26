@@ -49,9 +49,14 @@ def resolve_imports(ast, current_dir, linked_objects, imported_asts=None, fully_
 
                 sub_dir = os.path.dirname(module_path) or current_dir
                 sub_ast = resolve_imports(sub_ast, sub_dir, linked_objects, imported_asts, fully_included)
-                imported_asts[module_path] = sub_ast
 
-            sub_ast = imported_asts[module_path]
+                for sub_node in sub_ast:
+                    if not hasattr(sub_node, 'file_path'):
+                        sub_node.file_path = module_path
+
+                imported_asts[module_path] = sub_ast
+                
+                sub_ast = imported_asts[module_path]
 
             if node.item_tok:
                 item_name = node.item_tok[1]
@@ -108,35 +113,58 @@ def resolve_imports(ast, current_dir, linked_objects, imported_asts=None, fully_
 
 def output_symbols(input_file, is_strict=True):
     """Parses the source code, analyzes semantics and outputs the AST as JSON."""
-    if not os.path.exists(input_file):
-        print(json.dumps({"error": f"File '{input_file}' not found."}))
+    abs_input_path = os.path.abspath(input_file)
+    if not os.path.exists(abs_input_path):
+        sys.stderr.write(json.dumps({"error": f"File '{input_file}' not found."}) + "\n")
         sys.exit(1)
 
     try:
-        with open(input_file, 'r', encoding='utf-8') as f:
+        with open(abs_input_path, 'r', encoding='utf-8') as f:
             source_code = f.read()
 
         tokens = tokenize(source_code)
         parser = Parser(tokens)
         ast = parser.parse()
 
+        for node in ast:
+            if not hasattr(node, 'file_path'):
+                node.file_path = abs_input_path
+
         linked_objects = set()
-        current_dir = os.path.dirname(os.path.abspath(input_file))
+        current_dir = os.path.dirname(abs_input_path)
         ast = resolve_imports(ast, current_dir, linked_objects)
 
         analyzer = SemanticAnalyzer(strict_mode=is_strict)
         analyzer.analyze(ast)
 
+        raw_functions = getattr(analyzer, 'functions', {})
+        raw_classes = getattr(analyzer, 'classes', {})
+        raw_globals = getattr(analyzer, 'global_symbols', {})
+
+        def sanitize_symbols(sym_dict):
+            result = {}
+            if isinstance(sym_dict, dict):
+                for key, val in sym_dict.items():
+                    if isinstance(val, dict):
+                        item = copy.deepcopy(val)
+                        if 'file_path' not in item or not item['file_path']:
+                            item['file_path'] = abs_input_path
+                        result[key] = item
+                    else:
+                        result[key] = val
+            return result
+
         symbol_data = {
-            "functions": getattr(analyzer, 'functions', {}),
-            "classes": getattr(analyzer, 'classes', {}),
-            "globals": getattr(analyzer, 'global_symbols', {})
+            "functions": sanitize_symbols(raw_functions),
+            "classes": sanitize_symbols(raw_classes),
+            "globals": sanitize_symbols(raw_globals)
         }
 
-        print(json.dumps(symbol_data, indent=2, default=str))
+        sys.stdout.write(json.dumps(symbol_data, indent=2, default=str) + "\n")
+        sys.stdout.flush()
 
     except Exception as e:
-        print(json.dumps({"error": str(e)}))
+        sys.stderr.write(f"Symbol Extraction Error: {str(e)}\n")
         sys.exit(1)
 
 def compile_file(input_file, output_name=None, is_strict=True, keep_temps=False):
