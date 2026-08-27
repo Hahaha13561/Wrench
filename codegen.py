@@ -1065,7 +1065,7 @@ class CodeGen:
         if node.tok[0] == 'FLOAT':
             self.assembly.append(f"    mov rax, __float64__({node.tok[1]})")       
         else:    
-            num = int(node.tok[1])
+            num = int(node.tok[1], 0)
             if 0 <= num <= 2147483647:
                 self.assembly.append(f"    mov eax, {node.tok[1]}")
             else:
