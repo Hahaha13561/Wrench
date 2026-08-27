@@ -1,0 +1,163 @@
+{
+  "name": "wrench-vscode",
+  "displayName": "Wrench Language Extension",
+  "description": "Language support, syntax highlighting, and tools for Wrench 0.1.2",
+  "version": "0.1.2",
+  "publisher": "Hayrettin Bugra Arslan",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Hahaha13561/Wrench.git"
+  },
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onLanguage:wrench"
+  ],
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "python3 scripts/build_grammar.py && tsc -p ./",
+    "watch": "tsc -w -p ./",
+    "build-grammar": "python3 scripts/build_grammar.py"
+  },
+  "devDependencies": {
+    "@types/node": "^18.0.0",
+    "@types/vscode": "^1.75.0",
+    "typescript": "^5.0.0"
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "wrench",
+        "aliases": [
+          "Wrench",
+          "wrench"
+        ],
+        "extensions": [
+          ".wr"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "wrench",
+        "scopeName": "source.wrench",
+        "path": "./syntaxes/wrench.tmLanguage.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "wrench.compile",
+        "title": "Wrench: Compile",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "wrench.run",
+        "title": "Wrench: Run",
+        "icon": "$(play)"
+      },
+      {
+        "command": "wrench.runKeep",
+        "title": "Wrench: Run & Keep Temp Files (--keep)",
+        "icon": "$(play-circle)"
+      },
+      {
+        "command": "wrench.emitSymbols",
+        "title": "Wrench: Emit Assembly (--symbols)",
+        "icon": "$(code)"
+      },
+      {
+        "command": "wrench.runNoStrict",
+        "title": "Wrench: Run without Strict Mode (--no-strict)",
+        "icon": "$(debug-continue)"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "wrench.run",
+          "group": "navigation@1",
+          "when": "editorLangId == wrench"
+        },
+        {
+          "command": "wrench.compile",
+          "group": "navigation@2",
+          "when": "editorLangId == wrench"
+        },
+        {
+          "command": "wrench.runKeep",
+          "group": "wrench_run@1",
+          "when": "editorLangId == wrench"
+        },
+        {
+          "command": "wrench.emitSymbols",
+          "group": "wrench_run@2",
+          "when": "editorLangId == wrench"
+        },
+        {
+          "command": "wrench.runNoStrict",
+          "group": "wrench_run@3",
+          "when": "editorLangId == wrench"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "wrench.run",
+          "group": "wrench",
+          "when": "editorLangId == wrench"
+        },
+        {
+          "command": "wrench.compile",
+          "group": "wrench",
+          "when": "editorLangId == wrench"
+        },
+        {
+          "command": "wrench.runKeep",
+          "group": "wrench",
+          "when": "editorLangId == wrench"
+        },
+        {
+          "command": "wrench.emitSymbols",
+          "group": "wrench",
+          "when": "editorLangId == wrench"
+        },
+        {
+          "command": "wrench.runNoStrict",
+          "group": "wrench",
+          "when": "editorLangId == wrench"
+        }
+      ]
+    },
+    "configuration": {
+      "type": "object",
+      "title": "Wrench Configuration",
+      "properties": {
+        "wrench.compilerPath": {
+          "type": "string",
+          "default": "",
+          "description": "The compiler's absolute path. If left blank, it searches the working directory."
+        },
+        "wrench.pythonPath": {
+          "type": "string",
+          "default": "",
+          "description": "The Python interpreter command or path to use."
+        },
+        "wrench.defaultFlags": {
+          "type": "string",
+          "default": "",
+          "description": "Default compiler flags that will be automatically added to the command on each run."
+        },
+        "wrench.clearTerminalBeforeRun": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically clears the terminal before executing the command."
+        }
+      }
+    }
+  }
+}
