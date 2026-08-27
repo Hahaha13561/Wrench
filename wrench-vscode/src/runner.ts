@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { clear } from 'console';
+import * as fs  from 'fs';
 
 export class WrenchRunner {
     private static terminal: vscode.Terminal | undefined;
@@ -32,6 +32,11 @@ export class WrenchRunner {
             }
         }
 
+        if (!fs.existsSync(compilerPath)) {
+            vscode.window.showErrorMessage(`Wrench Compiler is not found: ${compilerPath}. Please check the setting "wrench.compilerPath".`)
+            return;
+        }
+
         const combinedFlags = `${defaultFlags} ${flags}`.trim();
         const fullCommand = `"${pythonPath}" "${compilerPath}" "${filePath}" ${combinedFlags}`.trim();
 
@@ -46,5 +51,12 @@ export class WrenchRunner {
 
         this.terminal.show(true);
         this.terminal.sendText(fullCommand);
+    }
+
+    public static dispose(): void {
+        if (this.terminal) {
+            this.terminal.dispose();
+            this.terminal = undefined;
+        }
     }
 }

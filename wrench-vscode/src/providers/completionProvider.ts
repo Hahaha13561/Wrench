@@ -74,7 +74,6 @@ export class WrenchCompletionItemProvider implements vscode.CompletionItemProvid
     }
 
     private addDynamicSymbols(items: vscode.CompletionItem[], symbols: WrenchSymbolTable): void {
-        // Functions
         if (symbols.functions) {
             for (const [funcName, funcInfo] of Object.entries(symbols.functions)) {
                 const item = new vscode.CompletionItem(funcName, vscode.CompletionItemKind.Function);
@@ -92,7 +91,6 @@ export class WrenchCompletionItemProvider implements vscode.CompletionItemProvid
             }
         }
 
-        // Classes
         if (symbols.classes) {
             for (const [className, classInfo] of Object.entries(symbols.classes)) {
                 const item = new vscode.CompletionItem(className, vscode.CompletionItemKind.Class);
@@ -105,7 +103,6 @@ export class WrenchCompletionItemProvider implements vscode.CompletionItemProvid
             }
         }
 
-        // Global Variables
         if (symbols.globals) {
             for (const [varName, varInfo] of Object.entries(symbols.globals)) {
                 const item = new vscode.CompletionItem(varName, vscode.CompletionItemKind.Variable);
@@ -132,28 +129,54 @@ export class WrenchCompletionItemProvider implements vscode.CompletionItemProvid
             return items;
         }
 
-        // List methods and fields in a class
-        for (const [className, classInfo] of Object.entries(symbols.classes)) {
-            if (varName === className || varName === 'this') {
-                if (classInfo.methods) {
-                    for (const [methodName, mInfo] of Object.entries(classInfo.methods)) {
-                        const item = new vscode.CompletionItem(methodName, vscode.CompletionItemKind.Method);
-                        const retType = mInfo.return_type || 'unit';
-                        item.detail = `(method) ${className}.${methodName} -> ${retType}`;
-                        item.insertText = new vscode.SnippetString(`${methodName}($0)`);
-                        items.push(item);
-                    }
+        const targetClassName = this.resolveVariableType(document, varName, symbols);
+        
+        if (targetClassName && symbols.classes[targetClassName]) {
+            const classInfo = symbols.classes[targetClassName];
+            if (classInfo.methods) {
+                for (const [methodName, mInfo] of Object.entries<any>(classInfo.methods)) {
+                    const item = new vscode.CompletionItem(methodName, vscode.CompletionItemKind.Method);
+                    const retType = mInfo.return_type || 'unit';
+                    item.detail = `(method) ${targetClassName}.${methodName} -> ${retType}`;
+                    item.insertText = new vscode.SnippetString(`${methodName}($0)`);
+                    items.push(item);
                 }
-                if (classInfo.fields) {
-                    for (const [fieldName, fInfo] of Object.entries(classInfo.fields)) {
-                        const item = new vscode.CompletionItem(fieldName, vscode.CompletionItemKind.Field);
-                        item.detail = `(property) ${className}.${fieldName}`;
-                        items.push(item);
-                    }
+            }
+            if (classInfo.fields) {
+                for (const [fieldName, fInfo] of Object.entries<any>(classInfo.fields)) {
+                    const item = new vscode.CompletionItem(fieldName, vscode.CompletionItemKind.Field);
+                    item.detail = `(property) ${targetClassName}.${fieldName}`;
+                    items.push(item);
                 }
             }
         }
-
         return items;
+    }
+
+    private resolveVariableType(document: vscode.TextDocument, varName: string, symbols: WrenchSymbolTable): string | null {
+        if (symbols.classes[varName]) {
+            return varName;
+        }
+
+        const fullText = document.getText();
+
+        if (varName === 'this') {
+            const classMatch = fullText.match(/class\s+([A-Za-z_]\w*)/);
+            return classMatch ? classMatch[1] : null;
+        }
+
+        const newPattern = new RegExp(`\\b${varName}\\s*=\\s*new\\s+([A-Za-z_]\\w*)`);
+        const newMatch = fullText.match(newPattern);
+        if (newMatch && symbols.classes[newMatch[1]]) {
+            return newMatch[1];
+        }
+
+        const typePattern = new RegExp(`\\b${varName}\\s*:\\s*([A-Za-z_]\\w*)`);
+        const typeMatch = fullText.match(typePattern);
+        if (typeMatch && symbols.classes[typeMatch[1]]) {
+            return typeMatch[1];
+        }
+
+        return null;
     }
 }

@@ -7,6 +7,7 @@ export interface WrenchFunctionSymbol {
     args?: Array<[tuple_type: any, tuple_name: any]>;
     line?: number;
     col?: number;
+    file_path?: string;
     [key: string]: any;
 }
 
@@ -18,13 +19,14 @@ export interface WrenchClassSymbol {
     size?: number;
     line?: number;
     col?: number;
+    file_path?: string;
     [key: string]: any;
 }
 
 export interface WrenchSymbolTable {
     functions: Record<string, WrenchFunctionSymbol>;
     classes: Record<string, WrenchClassSymbol>;
-    globals: Record<string, any>;
+    globals: Record<string, { line?: number; col?: number; file_path?: string; [key: string]: any }>;
     error?: string;
 }
 
@@ -76,14 +78,15 @@ export class CompilerBridge {
         const compilerPath = config.get<string>('compilerPath') || this.resolveCompilerPath(filePath);
 
         if (!compilerPath) {
+            vscode.window.showWarningMessage('Wrench Compiler is not found. Please check the setting "wrench.compilerPath".');
             return null;
         }
 
         return new Promise((resolve) => {
-            const command = `"${pythonPath}" "${compilerPath}" "${filePath}" --symbols`;
+            const args = [compilerPath, filePath, '--symbols'];
             const cwd = path.dirname(filePath);
 
-            cp.exec(command, { cwd }, (error: cp.ExecException | null, stdout: string, stderr: string) => {
+            cp.execFile(pythonPath, args, { cwd, maxBuffer: 10 * 1024 * 1024 }, (error: cp.ExecFileException | null, stdout: string, stderr: string) => {
                 if (stdout) {
                     try {   
                         const parsedData: WrenchSymbolTable = JSON.parse(stdout);
@@ -93,7 +96,7 @@ export class CompilerBridge {
                             return;
                         }
                     } catch (e) {
-                        // Standart dışı veya bozuk JSON çıktısı
+                        // Corrupt JSON Output
                     }
                 }
                 resolve(null);
@@ -110,12 +113,11 @@ export class CompilerBridge {
     }
 
     public clearCache(uri: string): void {
-        const uriStr = uri.toString();
-        this.symbolCache.delete(uriStr);
-        const timer = this.debounceTimers.get(uriStr);
+        this.symbolCache.delete(uri);
+        const timer = this.debounceTimers.get(uri);
         if (timer) {
             clearTimeout(timer);
-            this.debounceTimers.delete(uriStr);
+            this.debounceTimers.delete(uri);
         }
     }
 }

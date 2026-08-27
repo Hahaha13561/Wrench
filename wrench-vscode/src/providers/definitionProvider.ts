@@ -27,7 +27,8 @@ export class WrenchDefinitionProvider implements vscode.DefinitionProvider {
             if (typeof func.line === 'number') {
                 const line = Math.max(0, func.line - 1);
                 const col = Math.max(0, (func.col || 1) - 1);
-                return new vscode.Location(document.uri, new vscode.Position(line, col));
+                const targetUri = func.file_path ? vscode.Uri.file(func.file_path) : document.uri;
+                return new vscode.Location(targetUri, new vscode.Position(line, col));
             }
         }
 
@@ -36,7 +37,8 @@ export class WrenchDefinitionProvider implements vscode.DefinitionProvider {
             if (typeof cls.line === 'number') {
                 const line = Math.max(0, cls.line - 1);
                 const col = Math.max(0, (cls.col || 1) - 1);
-                return new vscode.Location(document.uri, new vscode.Position(line, col));
+                const targetUri = cls.file_path ? vscode.Uri.file(cls.file_path) : document.uri;
+                return new vscode.Location(targetUri, new vscode.Position(line, col));
             }
         }
 
@@ -45,7 +47,8 @@ export class WrenchDefinitionProvider implements vscode.DefinitionProvider {
             if (typeof glob === 'object' && typeof glob.line === 'number') {
                 const line = Math.max(0, glob.line - 1);
                 const col = Math.max(0, (glob.col || 1) - 1);
-                return new vscode.Location(document.uri, new vscode.Position(line, col));
+                const targetUri = glob.file_path ? vscode.Uri.file(glob.file_path) : document.uri;
+                return new vscode.Location(targetUri, new vscode.Position(line, col));
             }
         }
 
