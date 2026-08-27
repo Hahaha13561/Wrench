@@ -78,21 +78,37 @@ class SemanticAnalyzer:
         if not self.strict_mode:
             return True
 
-        if value_type == 'unit':
+        elif value_type == 'unit':
             raise Exception(f"Semantic Error: Cannot assign a 'unit' to '{var_name}', a value must be returned.")
+
+        wildtype = {'var', 'any', 'unknown'}
+        if target_type in wildtype or value_type in wildtype:
+            return True
+
+        str_type = {'str', 'string'}
+        int_type = {'int', 'integer'}
+        ptr_type = {'ptr', 'pointer', 'address', 'hex'}
 
         if target_type == value_type:
             return True
-        elif target_type == 'double' and value_type == 'int':
+        
+        if target_type in str_type and value_type in str_type:
             return True
-        elif value_type == 'any' or target_type == 'any':
+        
+        if target_type in int_type and value_type in int_type:
             return True
-        elif self.is_subclass(value_type, target_type):
+
+        if target_type in ptr_type and value_type in (ptr_type | int_type):
             return True
-        elif target_type in ('hex', 'ptr', 'pointer', 'address', 'int') and value_type in ('hex', 'int'):
+        
+        if target_type in int_type and value_type in ptr_type:
             return True
-        else:
-            raise Exception(f"Semantic Error: Variable '{var_name}' is '{target_type}', '{value_type}' is assigned.")
+        
+        if target_type == 'double' and value_type in int_type:
+            return True
+        if self.is_subclass(value_type, target_type):
+            return True
+        raise Exception(f"Semantic Error: Variable '{var_name}' is '{target_type}', '{value_type}' is assigned.")
 
     def check_boolean_condition(self, cond_node, context_name="condition"):
         """Checks if the condition is transformable into a logical value."""
@@ -114,6 +130,7 @@ class SemanticAnalyzer:
         while curr:
             if curr in self.fields and field_name in self.fields[curr]:
                 return self.fields[curr][field_name]
+            curr = self.class_hierarchy.get(curr)
         return None
 
     # ----- VISITOR FUNCTIONS -----
