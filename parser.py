@@ -395,8 +395,9 @@ class SwitchNode:
 
 # Built-in Functions
 BUILTIN_FUNCTION = {
-    'print', 'printf', 'len', 'realloc', 'type_of', 'read', 'read_int', 'print_float', 'print_hex', 'exit', 'alloc', 'sys_argc', 
-    'sys_argv', 'get_mem', 'get_mem32', 'addr_of', 'ptr_to', 'syscall', 'free'
+    'print', 'printf', "print_int", 'print_float', 'print_hex', 'print_string', 'read', 'read_int',
+    'len', 'alloc', 'realloc', 'free', 'type_of', 'exit',
+    'sys_argc', 'sys_argv', 'get_mem', 'get_mem32', 'addr_of', 'ptr_to', 'syscall'
 }
 
 class Parser:

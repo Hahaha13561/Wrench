@@ -4,7 +4,7 @@
 #/
 
 class List {
-    var data;
+    ptr data;
     int capacity;
     int length;
 
@@ -119,9 +119,9 @@ class Map {
 
     define destroy() {
         this.keys.destroy();
-        free(this.keys);
-
+        delete this.keys;
+            
         this.values.destroy();
-        free(this.values);
+        delete this.values;
     }
 }
