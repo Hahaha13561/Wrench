@@ -122,6 +122,8 @@ class CodeGen:
             "    empty_str db 0",
             "    null_print_msg db `(null)`, 0",
             "    dot_str db `.`, 0",
+            "    bool_true_msg db `true`, 0",
+            "    bool_false_msg db `false`, 0",
             "    segfault_msg db `[CRITICAL]: Violated Memory Adress -->`, 0",
             "    unhandled_msg db `[FATAL]: Uncaught Segfault! Program Terminated.`, 10, 0",
             "global_err_frame dq 0",
@@ -1593,10 +1595,24 @@ class CodeGen:
                 real_type = self._get_obj_type(arg_node)
                 if real_type: arg_type = real_type
 
+            if arg_type == 'bool':
+                true_lbl = self.get_new_label("PRINT_TRUE")
+                end_lbl = self.get_new_label("PRINT_BOOL_END")
+
+                self.assembly.append("    test rax, rax")
+                self.assembly.append(f"    jne {true_lbl}")
+                self.assembly.append("    lea rax, [rel bool_false_msg]") 
+                self.assembly.append(f"    jmp {end_lbl}")
+                self.assembly.append(f"{true_lbl}:")
+                self.assembly.append("    lea rax, [rel bool_true_msg]")  
+                self.assembly.append(f"{end_lbl}:")
+                self.assembly.append("    call print_string")
+                return
+            
             if arg_type in ('hex', 'ptr', 'pointer', 'address'):
                 self.assembly.append("    call print_hex")
 
-            elif arg_type in ('int', 'integer', 'bool', 'any', 'var'):
+            elif arg_type in ('int', 'integer', 'any', 'var'):
                 self.assembly.append("    call print_int")
             elif arg_type in ('double', 'float'):
                 self.assembly.append("    call print_float")

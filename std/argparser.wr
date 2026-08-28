@@ -43,7 +43,7 @@ class ArgumentParser {
 
     define parse_args(List sys_args) -> Map {
         var parsed_data = new Map();
-        var len = sys_args.length;
+        var sys_len = sys_args.length;
         var i = 1; 
 
         var j = 0;
@@ -61,7 +61,7 @@ class ArgumentParser {
             j += 1;
         }
 
-        while (i < len) {
+        while (i < sys_len) {
             var current_arg = sys_args.get(i) cast str;
             var matched = false;
 
@@ -74,12 +74,12 @@ class ArgumentParser {
 
                     // action="store"
                     if (arg_def.action =? "store") {
-                        if ((i + 1) < len) {
+                        if ((i + 1) < sys_len) {
                             var val_str = sys_args.get(i + 1) cast str;
                             
                             // type="..." 
                             if (arg_def.arg_type =? "int") {
-                                parsed_data.set(arg_def.name, parse_int(val_str));
+                                parsed_data.set(arg_def.name, val_str cast int);
                             } else {
                                 parsed_data.set(arg_def.name, val_str);
                             }
@@ -105,8 +105,21 @@ class ArgumentParser {
             if (matched =? false) {
                 if (this.subparsers.has(current_arg)) {
                     var sub_parser = this.subparsers.get(current_arg) cast ArgumentParser;
-                    // Subparser can be run recursive to read the remaining arguments.
-                    // (Simplified for the prototype phase)
+                    parsed_data.set("_subcommand", current_arg);
+                    
+                    List remaining_args = new List();
+                    remaining_args.push(current_arg);
+
+                    var rem_i = i + 1;
+                    while (rem_i < sys_len) {
+                        remaining_args.push(sys_args.get(rem_i));
+                        rem_i += 1;
+                    }
+
+                    Map sub_parsed_data = sub_parser.parse_args(remaining_args);
+                    parsed_data.set("_subargs", sub_parsed_data);
+                    
+                    break;
                 }
             }
             
