@@ -469,6 +469,15 @@ class Parser:
             
             type_tok = self.current_tok
             self.advance()
+
+            if self.current_tok is not None and self.current_tok[0] == 'PUNCTUATION' and self.current_tok[1] == '[':
+                self.advance()
+                if self.current_tok is None or self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != ']':
+                    self.throw("Syntax Error: Expected ']' after '[' in type cast")
+                self.advance()
+                type_tok = (type_tok[0], type_tok[1] + "[]", type_tok[2], type_tok[3])
+
+            
             node = CastNode(node, type_tok)
         
         return node

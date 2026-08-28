@@ -78,6 +78,9 @@ class SemanticAnalyzer:
         if not self.strict_mode:
             return True
 
+        if target_type == 'unit' and value_type == 'unit':
+            return True
+
         elif value_type == 'unit':
             raise Exception(f"Semantic Error: Cannot assign a 'unit' to '{var_name}', a value must be returned.")
 
