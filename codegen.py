@@ -1402,6 +1402,9 @@ class CodeGen:
         var_name = node.var_name_tok[1]
         loc = self.get_var_loc(var_name)
         if loc is None:
+            if (self.semantic_analyzer and hasattr(self.semantic_analyzer, 'functions') and var_name in self.semantic_analyzer.functions) or var_name in self.function_return_types:
+                self.assembly.append(f"    lea rax, [rel {var_name}]")
+                return
             raise RuntimeError(f"{var_name} is not found.")
         self.assembly.append(f"    mov rax, {loc}")
 

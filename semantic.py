@@ -329,10 +329,14 @@ class SemanticAnalyzer:
 
         func_name = node.node_to_call.var_name_tok[1]
 
+        is_in_scope = any(func_name in env for env in reversed(self.environments))
+
         if func_name in self.BUILTIN_FUNCTION_TYPES:
             ret_type = self.BUILTIN_FUNCTION_TYPES[func_name]
         elif func_name in self.functions:
             ret_type = self.functions[func_name]
+        elif is_in_scope:
+            ret_type = 'any'
         else:
             if self.strict_mode:
                 raise Exception(f"Semantic Error: '{func_name}' is not defined.")
@@ -429,6 +433,15 @@ class SemanticAnalyzer:
             if var_name in env:
                 node.eval_type = env[var_name]
                 return env[var_name]
+
+        if var_name in self.functions:
+            node.eval_type = 'ptr'
+            return 'ptr'
+
+        if var_name in self.BUILTIN_FUNCTION_TYPES:
+            node.eval_type = 'ptr'
+            return 'ptr'
+        
         raise Exception(f"Semantic Error: '{var_name}' is undefined.")
 
     def visit_BinOpNode(self, node):
