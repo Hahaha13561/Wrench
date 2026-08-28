@@ -21,7 +21,7 @@ TOKEN_SPECIFICATION = [
     ('OP_ASSIGN',     r'\+=|=\+|-=|=-|\*=|=\*|/=|=/|%=|=%|\^=|=\^'),        #Assign Operators
     ('ARROW', r'->'),                                                       #Arrow
     ('OP_MULTI', r'=\?|\?=|!=|=!|>=|=>|<=|=<|<|>'),                         #Multi-char Operators
-    ('OP_SINGLE',     r'[+\-*/%^=]'),                                       #Single-char Operators
+    ('OP_SINGLE', r'[+\-*/%^=!]'),                                       #Single-char Operators
     ('PUNCTUATION',   r'[;,\(\)\{\}\[\]\.:]'),                              #Punctuations
     ('IDENTIFIER',    r'[A-Za-z_]\w*'),                                     #Identifiers
     ('WHITESPACE',    r'[ \t\n]+'),                                         #Spaces

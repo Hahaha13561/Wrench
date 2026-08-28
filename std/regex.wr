@@ -9,7 +9,7 @@ include "std/string.wr";
 class RegexPattern {
     str raw_pattern;
 
-    define init(str pattern) {
+    define init(str pattern) -> unit {
         this.raw_pattern = pattern;
     }
 }
@@ -18,7 +18,7 @@ define compile(str pattern) -> RegexPattern {
     return new RegexPattern(pattern);
 }
 
-define match(str pattern, str text) -> str {
+define match(str pattern, str text, bool is_wildcard) -> str {
     var pat_len = str_len(pattern);
     var text_len = str_len(text);
 
@@ -28,7 +28,8 @@ define match(str pattern, str text) -> str {
 
     var i = 0;
     while (i < pat_len) {
-        if (pattern[i] != "." cast char and pattern[i] != text[i]) {
+        var char_match = (is_wildcard and pattern[i] =? "." cast char) or (pattern[i] =? text[i]);
+        if (!char_match) {
             return null;
         }
         i += 1;
@@ -37,7 +38,7 @@ define match(str pattern, str text) -> str {
     return substring(text, 0, pat_len);
 }
 
-define finditer(str pattern, str text) -> List {
+define finditer(str pattern, str text, bool is_wildcard) -> List {
     var results = new List();
     var pat_len = str_len(pattern);
     var text_len = str_len(text);
@@ -52,7 +53,8 @@ define finditer(str pattern, str text) -> List {
         var is_match = true;
 
         while (j < pat_len) {
-            if (pattern[j] != "." cast char and pattern[j] != text[i + j]) {
+            var char_match = (is_wildcard and pattern[j] =? "." cast char) or (pattern[j] =? text[i + j]);
+            if (!char_match) {
                 is_match = false;
                 break;
             }
@@ -71,7 +73,7 @@ define finditer(str pattern, str text) -> List {
     return results;
 }
 
-define split(str pattern, str text) -> List {
+define re_split(str pattern, str text, bool is_wildcard) -> List {
     var results = new List();
     var pat_len = str_len(pattern);
     var text_len = str_len(text);
@@ -89,7 +91,8 @@ define split(str pattern, str text) -> List {
         var is_match = true;
 
         while (j < pat_len) {
-            if (pattern[j] != "." cast char and pattern[j] != text[i + j]) {
+            var char_match = (is_wildcard and pattern[j] =? "." cast char) or (pattern[j] =? text[i + j]);
+            if (!char_match) {
                 is_match = false;
                 break;
             }
@@ -112,28 +115,62 @@ define split(str pattern, str text) -> List {
     return results;
 }
 
-define sub(str pattern, str repl, str text) -> str {
-    List parts = split(pattern, text) cast List;
-    var result = "";
-    var i = 0;
+define sub(str pattern, str repl, str text, bool is_wildcard) -> str {
+    List parts = re_split(pattern, text, is_wildcard) cast List;
     var parts_len = parts.length;
+    if (parts_len =? 0) {
+        parts.destroy();
+        delete parts;
+        var empty_str = alloc(1) cast str;
+        empty_str[0] = 0 cast char;
+        return empty_str;
+    }
 
-    // WARNING: Since there is no GC, temporary concat assigns on this loop may cause a memory leak.
-    // In the future, it must be optimized on a single buffer using realloc.
-
+    var repl_len = str_len(repl);
+    var total_len = 0;
+    var i = 0;
+    
     while (i < parts_len) {
         var part = parts.get(i) cast str;
-
-        result = concat(result, part);
-
-        if (i < (parts_len - 1)) {
-            result = concat(result, repl);
+        total_len += str_len(part);
+        if (i <(parts_len - 1)) {
+            total_len += repl_len;
         }
         i += 1;
     }
 
+    var buf = alloc(total_len + 1) cast str;
+    var buf_idx = 0;
+    i = 0;
+
+    while (i < parts_len) {
+        var part = parts.get(i) cast str;
+        var part_len = str_len(part);
+        var k = 0;
+        
+        while (k < part_len) {
+            buf[buf_idx] = part[k];
+            buf_idx += 1;
+            k += 1;
+        }
+
+        if (i < (parts_len -1)) {
+            k = 0;
+            while (k < repl_len) {
+                buf[buf_idx] = repl[k];
+                buf_idx += 1;
+                k += 1;
+            }
+        }
+
+        delete part;
+        i += 1;
+    }
+
+    buf[buf_idx] = 0 cast char;
+
     parts.destroy();
     delete parts;
 
-    return result;
+    return buf;
 }

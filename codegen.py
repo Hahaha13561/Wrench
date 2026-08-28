@@ -1543,7 +1543,7 @@ class CodeGen:
     def visit_UnaryOpNode(self, node):
         op = node.op_tok[1]
 
-        if op == 'not':
+        if op in ('not', '!'):
             self.generate(node.node)
             self.assembly.append("    test rax, rax")
             self.assembly.append("    sete al")
@@ -1836,7 +1836,7 @@ class CodeGen:
         old_exit_label = self.current_func_exit_label
         self.current_func_exit_label = exit_label
         self.assembly.append("")
-        self.assembly.append(f"{func_name}")
+        self.assembly.append(f"{func_name}:")
         self.assembly.append("    push rbp")
         self.assembly.append("    mov rbp, rsp")
 

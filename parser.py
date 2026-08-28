@@ -690,7 +690,10 @@ class Parser:
 
     def comp_expr(self):
 
-        if self.current_tok is not None and self.current_tok[0] == 'KEYWORD' and self.current_tok[1] in ('not', 'await', 'wait'):
+        if self.current_tok is not None and (
+        (self.current_tok[0] == 'KEYWORD' and self.current_tok[1] in ('not', 'await', 'wait')) or
+        (self.current_tok[0] == 'OP_SINGLE' and self.current_tok[1] == '!')
+        ):
             op_tok = self.current_tok
             self.advance()
             node = self.comp_expr()

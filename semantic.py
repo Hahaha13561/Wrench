@@ -84,6 +84,10 @@ class SemanticAnalyzer:
         elif value_type == 'unit':
             raise Exception(f"Semantic Error: Cannot assign a 'unit' to '{var_name}', a value must be returned.")
 
+        if value_type == 'null':
+            if target_type not in ('int', 'integer', 'double', 'float', 'bool'):
+                return True
+
         wildtype = {'var', 'any', 'unknown'}
         if target_type in wildtype or value_type in wildtype:
             return True
@@ -470,7 +474,7 @@ class SemanticAnalyzer:
     def visit_UnaryOpNode(self, node):
         val_type = self.visit(node.node)
         op = node.op_tok[1]
-        if op == 'not':
+        if op in ('not', '!'):
             node.eval_type = 'bool'
         else:
             node.eval_type = val_type
