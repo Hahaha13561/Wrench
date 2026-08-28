@@ -10,10 +10,9 @@ class File {
     int size;
     var content;
 
-    define init(str file_path) {
-        // 1. Open the file (sys_open = Syscall 2)
+    define init(str file_path) -> unit {
         // Parameters: 2 (rax), path (rdi), 0 O_RDONLY (rsi), 0 mode (rdx)
-        this.fd = syscall(2, file_path, 0, 0);
+        this.fd = syscall(2, file_path, 0, 0) cast int;
 
         if (this.fd < 0) {
             print("Critical Error: File couldn't open -> ");
@@ -24,23 +23,30 @@ class File {
 
         // 2. Find the filesize (sys_lseek = Syscall 8)
         // SEEK_END = 2 
-        this.size = syscall(8, this.fd, 0, 2);
+        this.size = syscall(8, this.fd, 0, 2) cast int;
 
         syscall(8, this.fd, 0, 0);
+        
+        var buf = alloc(this.size + 1) cast str;
+        syscall(0, this.fd, buf, this.size);
 
-        this.content = alloc(this.size + 1);
-
-        syscall(0, this.fd, this.content, this.size);
-
+        buf[this.size] = 0 cast char;
+        this.content = buf;
     }
 
-    define read() -> str {
-        return this.content;
+    define read_all() -> str {
+        return this.content cast str;
     }
 
-    define close() {
-        syscall(3, this.fd);
-        delete this.content;
+    define close() -> unit {
+        if (this.fd >= 0) {
+            syscall(3, this.fd);
+            this.fd = -1;
+        }
+        if (this.content =! null) {
+            delete this.content;
+            this.content = null;
+        }
     }
 }
 
@@ -73,7 +79,7 @@ define append_file(str file_path, str content) -> bool {
     while (content[length] != 0 cast char) {
         length += 1;
     }
-
+    
     syscall(1, fd, content, length); // sys_write
     syscall(3, fd); // sys_close
     return true;
@@ -109,14 +115,9 @@ define dir_list(str dir_path) -> List {
 
         var bpos = 0;
         while (bpos < bread) {
-            // linux_dirent struct (64-bit): 
-            // d_ino (8 byte) + d_off (8 byte) + d_reclen (2 byte) + d_type (1 byte) + d_name (variable)
-            // linux_dirent struct (32-bit): 
-            // d_ino (8 byte) + d_off (8 byte) + d_reclen (2 byte) + d_name (variable)
             var b1 = buffer[bpos + 16] cast int;
             var b2 = buffer[bpos + 17] cast int;
             var reclen = b1 + (b2 * 256);
-            // 64-bit : 19, 32-bit: 18
             var name_start = bpos + 19;
 
             var name_len = 0;
@@ -152,7 +153,7 @@ define dir_list(str dir_path) -> List {
                     file_list.push(file_name);
                 } 
                 else {
-                    free(file_name);
+                    delete file_name;
                 }
             }
 
@@ -161,7 +162,7 @@ define dir_list(str dir_path) -> List {
         }
     }
 
-    free(buffer);
+    delete buffer;
     syscall(3, fd);
     return file_list;
 }
