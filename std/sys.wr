@@ -21,23 +21,22 @@ define execute(str program, List cmd_args) -> int {
     var pid = syscall(57) cast int;
 
     if (pid =? 0) {
-        var len = cmd_args.length;
+        var exec_len = cmd_args.length;
 
-        var argv_ptr = alloc((len+1) * 8);
+        var argv_ptr = alloc((exec_len+1) * 8) cast int[];
 
         var i = 0;
 
-        while (i < len) {
-            var str_ptr = cmd_args.get(i) cast int;
-            var offset  = i * 8;
-            set_mem(argv_ptr, offset, str_ptr);
+        while (i < exec_len) {
+            argv_ptr[i] = cmd_args.get(i) cast int;
             i += 1;
         }
 
-        var null_offset = len * 8;
-        set_mem(argv_ptr, null_offset, 0);
+        argv_ptr[exec_len] = 0;
 
         syscall(59, program, argv_ptr, 0);
+        
+        delete argv_ptr;
 
         print("Execve Error: Failed to execute process\n");
         exit(1);
@@ -55,7 +54,7 @@ class SysModule {
     int stderr;
     str platform;
 
-    define init() {
+    define init() -> unit {
         this.stdin = 0;
         this.stdout = 1;
         this.stderr = 2;
@@ -64,12 +63,16 @@ class SysModule {
         this.argv = args();
     }
 
-    define exit(int code) {
-        syscall(60, code, 0, 0, 0, 0, 0);
+    define quit(int code) -> unit {
+        exit(code);
     }
 
-    define setrecursionlimit(int limit) {
-        print("[Warning]: Recursion limit is determined by your OS stack size.\n"); //That's not what it's supposed to be i assume..
+    define setrecursionlimit(int limit_bytes) -> unit {
+        var rlim = alloc(16) cast int[];
+        rlim[0] = limit_bytes;
+        rlim[1] = limit_bytes;
+        syscall(160, 3, rlim);
+        delete rlim;
     }
 
     define getsizeof(var obj) -> int {
@@ -82,13 +85,15 @@ class SysModule {
         }
     }
 
-    define execute(str program, List cmd_args) {
+    define execute(str program, List cmd_args) -> int {
         execute(program, cmd_args);
     }
 
-    define destroy() {
-        this.argv.destroy();
-        delete this.argv;
+    define destroy() -> unit {
+        if (this.argv != null) {
+            this.argv.destroy();
+            delete this.argv;
+        }
     }
 }
 
