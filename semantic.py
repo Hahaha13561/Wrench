@@ -36,7 +36,6 @@ class SemanticAnalyzer:
         'ptr_to': 'ptr'
     }
 
-
     def analyze(self, ast):
         for node in ast:
             if type(node).__name__ == 'ClassDefNode':
@@ -134,10 +133,17 @@ class SemanticAnalyzer:
     def get_field_type(self, class_name, field_name):
         """Finds the field type, scanning the class hierarchy upwards."""
         curr = class_name
-        while curr:
+        while curr: #ion currrrrrr
             if curr in self.fields and field_name in self.fields[curr]:
                 return self.fields[curr][field_name]
             curr = self.class_hierarchy.get(curr)
+        return None
+
+    def lookup_var_type(self, var_name):
+        """Searches scope hierarchy backwards for a variable type."""
+        for env in reversed(self.environments):
+            if var_name in env:
+                return env[var_name]
         return None
 
     # ----- VISITOR FUNCTIONS -----
