@@ -430,7 +430,7 @@ class SemanticAnalyzer:
         declared_type = node.type_tok[1] if node.type_tok else value_type
 
         if declared_type == 'var':
-            declared_type = value_type
+            declared_type = value_type if value_type != 'null' else 'any'
 
 
         self.check_type_compatibility(declared_type, value_type, var_name)

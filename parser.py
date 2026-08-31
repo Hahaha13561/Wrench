@@ -958,7 +958,7 @@ class Parser:
             self.advance()
 
         if self.current_tok is not None and (
-            (self.current_tok[0] == 'KEYWORD' and self.current_tok[1] in ('int', 'integer', 'double', 'char', 'str', 'string', 'bool', 'var')) or
+            (self.current_tok[0] == 'KEYWORD' and self.current_tok[1] in ('int', 'integer', 'double', 'char', 'str', 'string', 'bool', 'var', 'ptr', 'pointer', 'address', 'hex')) or
             (self.current_tok[0] == 'IDENTIFIER' and self.peek() is not None and self.peek()[0] == 'IDENTIFIER')
         ):
             type_tok = self.current_tok
