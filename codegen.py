@@ -1023,6 +1023,28 @@ class CodeGen:
 
         return node, active_shortcuts, pos_idx
 
+    def _is_temp_string(self, node):
+        """Checks whether the node produces a heap-allocated temporary string that needs to be freed."""
+        if node is None:
+            return False
+
+        ntype = type(node).__name__
+        if ntype in ('VarAccessNode', 'StringNode', 'MemberAccessNode'):
+            return False
+
+        if ntype == 'BinOpNode':
+            op_type = getattr(node, 'operand_type', getattr(node.left_node, 'eval_type', 'int'))
+            return op_type in ('str', 'string') and node.op_tok[1] == '+'
+
+        if ntype == 'CastNode':
+            return node.type_tok[1] in ('str', 'string')
+
+        if ntype == 'FuncCallNode':
+            ret_type = self._get_obj_type(node)
+            return ret_type in ('str', 'string')
+
+        return False
+
     def _emit_str_coercion(self, expr_type):
         """Turns the value in RAX into a string pointer in runtime.
         
@@ -1487,7 +1509,7 @@ class CodeGen:
             raise RuntimeError(f"{var_name} is not found.")
         self.assembly.append(f"    mov rax, {loc}")
 
-    def visit_BinOpNode(self, node):
+    def visit_BinOpNode(self, node):    
         """Reduces mathematics, comparison, and string operations to assembly language."""
         self.generate(node.right_node)
         
@@ -1499,13 +1521,35 @@ class CodeGen:
             # --- STRING ---
             op = node.op_tok[1]
             if op == '+':
+                left_is_temp = self._is_temp_string(node.left_node)
+                right_is_temp = self._is_temp_string(node.right_node)
+
                 self._emit_str_coercion(right_type)
                 self.assembly.append("    push rax")
                 self.generate(node.left_node)
                 self._emit_str_coercion(left_type)
                 self.assembly.append("    mov rdi, rax")
                 self.assembly.append("    pop rsi")
+                self.assembly.append("    push rax")
+
+                self.assembly.append("    mov rdi, qword [rsp]")
+                self.assembly.append("    mov rsi, qword [rsp + 8]")
                 self.assembly.append("    call concat_strings")
+
+                if left_is_temp or right_is_temp:
+                    self.assembly.append("    push rax")
+
+                    if left_is_temp:
+                        self.assembly.append("    mov rdi, qword [rsp + 8]")
+                        self.assembly.append("    call free")
+
+                    if right_is_temp:
+                        self.assembly.append("    mov rdi, qword [rsp + 16]")
+                        self.assembly.append("    call free")
+
+                    self.assembly.append("    pop rax") # Restore result RAX
+
+                self.assembly.append("    add rsp, 16") # Clean left & right ptrs from stack
             elif op in ('=?', '?=', '!=', '=!', '>', '<', '>=', '=>', '<=', '=<', 'is', 'same'):
                 self.assembly.append("    push rax")
                 self.generate(node.left_node)
