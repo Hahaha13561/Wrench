@@ -16,7 +16,6 @@ class SemanticAnalyzer:
         'print_hex': 'unit',
         'print_int': 'unit',
         'print_string': 'unit',
-        'free': 'unit',
         'exit': 'unit',
 
         'len': 'int',
