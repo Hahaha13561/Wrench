@@ -696,6 +696,30 @@ class CodeGen:
             "    mov rsp, rbp",
             "    pop rbp",
             "    ret",
+            "",
+            "str_ndup:",
+            "    push rbp",
+            "    mov rbp, rsp",
+            "    push rdi",
+            "    push rsi",
+            "    mov rdi, rsi",
+            "    call alloc",
+            "    pop rsi",
+            "    pop rdi",
+            "    xor ecx, ecx",
+            ".ndup_copy_loop:",
+            "    cmp rcx, rsi",
+            "    je .ndup_copy_done",
+            "    mov dl, byte [rdi + rcx]",
+            "    mov byte [rax + rcx], dl",
+            "    inc rcx",
+            "    jmp .ndup_copy_loop",
+            ".ndup_copy_done:",
+            "    mov byte, [rax + rsi], 0", #Null Terminator
+            "    mov rsp, rbp",
+            "    pop rbp",
+            "    ret",
+            "",
             "free:",
             "    push rbp",
             "    mov rbp, rsp",
@@ -1813,6 +1837,15 @@ class CodeGen:
             self.generate(node.arg_nodes[0])
             self.assembly.append("    mov rdi, rax")
             self.assembly.append("    call alloc")
+            return
+
+        elif func_name == 'str_ndup':
+            self.generate(node.arg_nodes[1])
+            self.assembly.append("    push rax")
+            self.generate(node.arg_nodes[0])
+            self.assembly.append("    mov rdi, rax")
+            self.assembly.append("    pop rsi")
+            self.assembly.append("    call str_ndup")
             return
 
         elif func_name == 'sys_argc':

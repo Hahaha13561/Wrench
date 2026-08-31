@@ -26,9 +26,10 @@ class SemanticAnalyzer:
         'get_mem32': 'int',
         'syscall': 'int',
 
-        'read': 'string',
-        'type_of': 'string',
-        'sys_argv': 'string',
+        'read': 'str',
+        'type_of': 'str',
+        'sys_argv': 'str',
+        'str_ndup': 'str',
 
         'alloc': 'ptr',
         'realloc': 'ptr',
