@@ -14,6 +14,8 @@ class SemanticAnalyzer:
         'printf': 'unit',
         'print_float': 'unit',
         'print_hex': 'unit',
+        'print_int': 'unit',
+        'print_string': 'unit',
         'free': 'unit',
         'exit': 'unit',
 
@@ -33,7 +35,6 @@ class SemanticAnalyzer:
         'addr_of': 'ptr',
         'ptr_to': 'ptr'
     }
-
 
     def analyze(self, ast):
         for node in ast:
@@ -76,21 +77,44 @@ class SemanticAnalyzer:
         if not self.strict_mode:
             return True
 
-        if value_type == 'unit':
+        if target_type == 'unit' and value_type == 'unit':
+            return True
+
+        elif value_type == 'unit':
             raise Exception(f"Semantic Error: Cannot assign a 'unit' to '{var_name}', a value must be returned.")
+
+        if value_type == 'null':
+            if target_type not in ('int', 'integer', 'double', 'float', 'bool'):
+                return True
+
+        wildtype = {'var', 'any', 'unknown'}
+        if target_type in wildtype or value_type in wildtype:
+            return True
+
+        str_type = {'str', 'string'}
+        int_type = {'int', 'integer'}
+        ptr_type = {'ptr', 'pointer', 'address', 'hex'}
 
         if target_type == value_type:
             return True
-        elif target_type == 'double' and value_type == 'int':
+        
+        if target_type in str_type and value_type in str_type:
             return True
-        elif value_type == 'any' or target_type == 'any':
+        
+        if target_type in int_type and value_type in int_type:
             return True
-        elif self.is_subclass(value_type, target_type):
+
+        if target_type in ptr_type and value_type in (ptr_type | int_type):
             return True
-        elif target_type in ('hex', 'ptr', 'pointer', 'address', 'int') and value_type in ('hex', 'int'):
+        
+        if target_type in int_type and value_type in ptr_type:
             return True
-        else:
-            raise Exception(f"Semantic Error: Variable '{var_name}' is '{target_type}', '{value_type}' is assigned.")
+        
+        if target_type == 'double' and value_type in int_type:
+            return True
+        if self.is_subclass(value_type, target_type):
+            return True
+        raise Exception(f"Semantic Error: Variable '{var_name}' is '{target_type}', '{value_type}' is assigned.")
 
     def check_boolean_condition(self, cond_node, context_name="condition"):
         """Checks if the condition is transformable into a logical value."""
@@ -109,9 +133,17 @@ class SemanticAnalyzer:
     def get_field_type(self, class_name, field_name):
         """Finds the field type, scanning the class hierarchy upwards."""
         curr = class_name
-        while curr:
+        while curr: #ion currrrrrr
             if curr in self.fields and field_name in self.fields[curr]:
                 return self.fields[curr][field_name]
+            curr = self.class_hierarchy.get(curr)
+        return None
+
+    def lookup_var_type(self, var_name):
+        """Searches scope hierarchy backwards for a variable type."""
+        for env in reversed(self.environments):
+            if var_name in env:
+                return env[var_name]
         return None
 
     # ----- VISITOR FUNCTIONS -----
@@ -310,10 +342,14 @@ class SemanticAnalyzer:
 
         func_name = node.node_to_call.var_name_tok[1]
 
+        is_in_scope = any(func_name in env for env in reversed(self.environments))
+
         if func_name in self.BUILTIN_FUNCTION_TYPES:
             ret_type = self.BUILTIN_FUNCTION_TYPES[func_name]
         elif func_name in self.functions:
             ret_type = self.functions[func_name]
+        elif is_in_scope:
+            ret_type = 'any'
         else:
             if self.strict_mode:
                 raise Exception(f"Semantic Error: '{func_name}' is not defined.")
@@ -394,7 +430,7 @@ class SemanticAnalyzer:
         declared_type = node.type_tok[1] if node.type_tok else value_type
 
         if declared_type == 'var':
-            declared_type = value_type
+            declared_type = value_type if value_type != 'null' else 'any'
 
 
         self.check_type_compatibility(declared_type, value_type, var_name)
@@ -410,6 +446,15 @@ class SemanticAnalyzer:
             if var_name in env:
                 node.eval_type = env[var_name]
                 return env[var_name]
+
+        if var_name in self.functions:
+            node.eval_type = 'ptr'
+            return 'ptr'
+
+        if var_name in self.BUILTIN_FUNCTION_TYPES:
+            node.eval_type = 'ptr'
+            return 'ptr'
+        
         raise Exception(f"Semantic Error: '{var_name}' is undefined.")
 
     def visit_BinOpNode(self, node):
@@ -435,7 +480,7 @@ class SemanticAnalyzer:
     def visit_UnaryOpNode(self, node):
         val_type = self.visit(node.node)
         op = node.op_tok[1]
-        if op == 'not':
+        if op in ('not', '!'):
             node.eval_type = 'bool'
         else:
             node.eval_type = val_type

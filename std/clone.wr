@@ -5,9 +5,9 @@
 
 class CloneModule {
 
-    define init() {}
+    define init() -> unit {}
 
-    define clone_mem(var dest, var src, int count) {
+    define clone_mem(var dest, var src, int count) -> unit {
         if (dest =? null or src =? null or count <= 0) {
             return;
         }
@@ -24,7 +24,7 @@ class CloneModule {
         }
     }
 
-    define fill(var target, int value, int count) {
+    define fill(var target, int value, int count) -> unit{
         if (target =? null or count <= 0) {
             return;
         }
@@ -40,7 +40,10 @@ class CloneModule {
         }
     }
 
-    define swap_arr(var arr, int i, int j) {
+    define swap_arr(var arr, int i, int j) -> unit {
+        if (arr =? null) {
+            return;
+        }
         var temp = arr[i]; 
         arr[i] = arr[j];
         arr[j] = temp;
@@ -52,7 +55,7 @@ class CloneModule {
         }
 
         var obj_ptr = obj cast int;
-        var byte_len = get_len(obj) * 8;
+        var byte_len = len(obj) * 8;
 
         if (byte_len <= 0) {
             return null;

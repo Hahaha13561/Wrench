@@ -20,8 +20,8 @@ class PathModule {
     }
 
     define dirname(str p) -> str {
-        var len = str_len(p);
-        var i = len - 1;
+        var p_len = str_len(p);
+        var i = p_len - 1;
         while (i >= 0) {
             if (p[i] =? "/" cast char) {
                 if (i =? 0) {
@@ -35,14 +35,14 @@ class PathModule {
     }
 
     define normpath(str p) -> str {
-        var parts = split(p, "/" cast char);
+        List parts = split(p, "/" cast char);
         List stack = new List();
 
         var i = 0;
-        var parts_len = len(parts);
+        var parts_len = parts.length;
 
         while (i < parts_len) {
-            str part = parts[i] cast str;
+            str part = parts.get(i) cast str;
             if (part != "" and part != ".") {
                 if (part =?"..") {
                     if (stack.length > 0) {
@@ -75,7 +75,8 @@ class PathModule {
             res = ".";
         }
 
-        free(parts);
+        parts.destroy();
+        delete parts;
         stack.destroy();
         delete stack;
 
@@ -94,7 +95,7 @@ class PathModule {
         }
 
         var buf_size = 4096;
-        str buf = alloc(buf_size);
+        str buf = alloc(buf_size) cast str;
         var res = syscall(79, buf, buf_size, 0, 0, 0, 0) cast int;
 
         var cwd = "";
@@ -107,6 +108,8 @@ class PathModule {
 
         var joined = this.join(cwd, p);
         var absolute = this.normpath(joined);
+        
+        free(buf);
         
         return absolute;
     }
@@ -129,43 +132,55 @@ class OSModule {
         if (err_code =? 2) {
             var e = new FileNotFoundError(msg);
             e.print_err();
-            trigger e.code;
+            var c = e.code;
+            delete e;
+            trigger c;
         }
 
         butif (err_code =? 13) {
             var e = new PermissionError(msg);
             e.print_err();
-            trigger e.code;
+            var c = e.code;
+            delete e;
+            trigger c;
         }
 
         butif (err_code =? 17) {
             var e = new FileExistsError(msg);
             e.print_err();
-            trigger e.code;
+            var c = e.code;
+            delete e;
+            trigger c;
         }
 
         butif (err_code =? 20) {
             var e = new NotADirectoryError(msg);
             e.print_err();
-            trigger e.code;
+            var c = e.code;
+            delete e;
+            trigger c;
         }
 
         butif (err_code =? 21) {
             var e = new IsADirectoryError(msg);
             e.print_err();
-            trigger e.code;
+            var c = e.code;
+            delete e;
+            trigger c;
         }
 
         else {
             var e = new OSError(msg, err_code);
             e.print_err();
-            trigger e.code;
+            var c = e.code;
+            delete e;
+            trigger c;
         }
     }
 
     define getcwd() -> str {
         var buf_size = 4096;
-        str buf = alloc(buf_size);
+        str buf = alloc(buf_size) cast str;
         var res = syscall(79, buf, buf_size, 0, 0, 0, 0) cast int;
         if (res < 0) {
             this.raise_os_error("getcwd()", res);
@@ -193,18 +208,18 @@ class OSModule {
     }
 
     define makedirs(str p, bool exist_ok) {
-        var parts = split(p, "/" cast char);
+        List parts = split(p, "/" cast char);
         var current = "";
 
         if (p[0] =? "/" cast char) {
             current = "/";
         }
         
-        var parts_len = len(parts);
+        var parts_len = parts.length;
         var i = 0;
         
         while (i < parts_len) {
-            str part = parts[i] cast str;
+            str part = parts.get(i) cast str;
             if (part != "") {
                 current = this.path.join(current, part);
                 
@@ -226,7 +241,8 @@ class OSModule {
             }
             i += 1;
         }
-        free(parts);
+        parts.destroy();
+        delete parts;
     }
 
     define access(str p, int mode) -> bool {
@@ -234,7 +250,6 @@ class OSModule {
         return (res =? 0);
     }
 
-    //Note: Loading all environmental variables to a static map carries Memory Leak risks. Currently getenv is used, but it needs to be fixed.
     define getenv(str key) -> str {
         var argc = sys_argc();
         var i = argc + 1;
@@ -249,12 +264,18 @@ class OSModule {
             var env_str = sys_argv(i) cast str;
             var env_len = str_len(env_str);
 
-            if (env_len > key_len) {
-                if (env_str[key_len] =? "=" cast char) {
-                    var current_key = substring(env_str, 0, key_len);
-                    if (current_key =? key) {
-                        return substring(env_str, key_len + 1, env_len);
+            if (env_len > key_len and env_str[key_len] =? "=" cast char) {
+                var match = true;
+                var k = 0;
+                while (k < key_len) {
+                    if (env_str[k] != key[k]) {
+                        match = false;
+                        break;
                     }
+                    k += 1;
+                }
+                if (match) {
+                    return substring(env_str, key_len + 1, env_len);
                 }
             }
             i += 1;

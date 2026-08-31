@@ -6,7 +6,7 @@ define now() -> int {
     var tp = alloc(16);
     syscall(228, 0 ,tp);
     var sec = tp[0];
-    free(tp);
+    delete tp;
     return sec;
 }
 
@@ -14,7 +14,7 @@ define now_ms() -> int {
     var tp = alloc(16);
     syscall(228, 0 ,tp);
     var ms = (tp[0] * 1000) + (tp[1] / 1000000);
-    free(tp);
+    delete tp;
     return ms;
 }
 
@@ -22,7 +22,7 @@ define ticks() -> int {
     var tp = alloc(16);
     syscall(228, 1, tp);
     var ms = (tp[0] * 1000) + (tp[1] / 1000000);
-    free(tp);
+    delete tp;
     return ms;
 }
 
@@ -35,7 +35,8 @@ define sleep(int ms) -> int {
     req[1] = nano;
 
     syscall(35, req, 0);
-    free(req);
+    delete req;
+    return 0;
 }
 
 define measure(var func_ptr) -> int {

@@ -2,6 +2,7 @@
    std/error.wr
    Hierarchical Exception and Error Handling Library
 #/
+
 class BaseException {
     str message;
     var code;
@@ -17,335 +18,365 @@ class BaseException {
     }
 }
 
-    class Exception extends BaseException {
+class Exception extends BaseException {
     define init(str msg, int err_code) {
         this.message = msg;
         this.code = err_code;
     }
 }
-        class ArithmeticError extends Exception {
-            define init(str msg, int err_code) {
-                this.message = msg;
-                this.code = err_code;
-            }
-        }
-            class ZeroDivisionError extends ArithmeticError {
-                define init(str msg) {
-                    this.message = msg;
-                    this.code = 80; // FPE_INTDIV
-                }
-            }
 
-            class OverflowError extends ArithmeticError {
-                define init(str msg) {
-                    this.message = msg;
-                    this.code = 75; // EOVERFLOW
-                }
-            }
+class ArithmeticError extends Exception {
+    define init(str msg, int err_code) {
+        this.message = msg;
+        this.code = err_code;
+    }
+}
 
-            class FloatingPointError extends ArithmeticError {
-                define init(str msg) {
-                    this.message = msg;
-                    this.code = 8; // SIGFPE
-                }
-            }
-        class LookupError extends Exception {
-            define init(str msg, int err_code) {
-                this.message = msg;
-                this.code = err_code;
-            }
-        }
-            class IndexError extends LookupError {
-                define init(str msg) {
-                    this.message = msg;
-                    this.code = 99;
-                }
-            }
+class ZeroDivisionError extends ArithmeticError {
+    define init(str msg) {
+        this.message = msg;
+        this.code = 80; // FPE_INTDIV
+    }
+}
 
-            class KeyError extends LookupError {
-                define init(str msg) {
-                    this.message = msg;
-                    this.code = 100;
-                }
-            }
+class OverflowError extends ArithmeticError {
+    define init(str msg) {
+        this.message = msg;
+        this.code = 75; // EOVERFLOW
+    }
+}
 
-        class NameError extends Exception {
-            define init(str msg, int err_code) {
-                this.message = msg;
-                this.code = err_code;
-            }
-        }
-            class UnboundLocalError extends NameError {
-                define init(str msg) {
-                    this.message = msg;
-                    this.code = 101;
-                }
-            }
-        class ValueError extends Exception {
-            define init(str msg, int err_code) {
-                this.message = msg;
-                this.code = err_code;
-            }
-        }
-            class UnicodeError extends ValueError {
-                define init(str msg, int err_code) {
-                    this.message = msg;
-                    this.code = err_code;
-                }
-            }
-                class UnicodeEncodeError extends UnicodeError {
-                    define init(str msg) {
-                        this.message = msg;
-                        this.code = 85;
-                    }
-                }
-                class UnicodeDecodeError extends UnicodeError {
-                    define init(str msg) {
-                        this.message = msg;
-                        this.code = 86;
-                    }
-                }
-                class UnicodeTranslateError extends UnicodeError {
-                    define init(str msg) {
-                        this.message = msg;
-                        this.code = 87;
-                    }
-                }
-        class SyntaxError extends Exception {
-            define init(str msg, int err_code) {
-                this.message = msg;
-                this.code = err_code;
-            }
-        }
-            class IndentationError extends SyntaxError {
-                define init(str msg) {
-                    this.message = msg;
-                    this.code = 400; 
-                }
-            }
-                class TabError extends IndentationError {
-                    define init(str msg) {
-                        this.message = msg;
-                        this.code = 401;
-                    }
-                }
-        class OSError extends Exception {
-            define init(str msg, int err_code) {
-                this.message = msg;
-                this.code = err_code;
-            }
-        }
-            class FileNotFoundError extends OSError {
-                define init(str msg) {
-                    this.message = msg;
-                    this.code = 2; // ENOENT - Dosya veya dizin bulunamadı
-                }
-            }
-            class FileExistsError extends OSError {
-                define init(str msg) {
-                    this.message = msg;
-                    this.code = 17; 
-                }
-            }
-            class PermissionError extends OSError {
-                define init(str msg) {
-                    this.message = msg;
-                    this.code = 13; 
-                }
-            }
-            class TimeoutError extends OSError {
-                define init(str msg) {
-                this.message = msg;
-                this.code = 110; 
-                }
-            }
-            class IsADirectoryError extends OSError {
-                define init(str msg) {
-                    this.message = msg;
-                    this.code = 21; 
-                }
-            }
-            class NotADirectoryError extends OSError {
-                define init(str msg) {
-                    this.message = msg;
-                    this.code = 20; 
-                }
-            }
-            class ConnectionError extends OSError {
-                define init(str msg, int err_code) {
-                    this.message = msg;
-                    this.code = err_code;
-                }
-            }
-                class ConnectionRefusedError extends ConnectionError {
-                    define init(str msg) {
-                        this.message = msg;
-                        this.code = 111; 
-                    }
-                }
-                class BrokenPipeError extends ConnectionError {
-                    define init(str msg) {
-                        this.message = msg;
-                        this.code = 32; 
-                    }
-                }
-                class ConnectionAbortedError extends ConnectionError {
-                    define init(str msg) {
-                        this.message = msg;
-                        this.code = 103; 
-                    }
-                }
-                class ConnectionResetError extends ConnectionError {
-                    define init(str msg) {
-                        this.message = msg;
-                        this.code = 104;
-                    }
-                }
+class FloatingPointError extends ArithmeticError {
+    define init(str msg) {
+        this.message = msg;
+        this.code = 8; // SIGFPE
+    }
+}
 
-        class AllegationError extends Exception {
-            define init(str msg) {
-                this.message = msg;
-                this.code = 1;
-            }
-        }
-        class TypeError extends Exception {
-            define init(str msg) {
-                this.message = msg;
-                this.code = 120;
-            }
-        }
-        class ReferenceError extends Exception {
-            define init(str msg) {
-                this.message = msg;
-                this.code = 103;
-            }
-        }
-        class AttributeError extends Exception {
-            define init(str msg) {
-                this.message = msg;
-                this.code = 104;
-            }
-        }
-        class EOFError extends Exception {
-            define init(str msg) {
-                this.message = msg;
-                this.code = 107;
-            }
-        }
-        class BufferError extends Exception {
-            define init(str msg) {
-                this.message = msg;
-                this.code = 105;
-            }
-        }
-        class ImportError extends Exception {
-            define init(str msg, int err_code) {
-                this.message = msg;
-                this.code = err_code;
-            }
-        }
-            class ModuleNotFoundError extends ImportError {
-                define init(str msg) {
-                    this.message = msg;
-                    this.code = 109;
-                }
-            }
-        class RuntimeError extends Exception {
-            define init(str msg, int err_code) {
-                this.message = msg;
-                this.code = err_code;
-            }
-        }
-            class NotImplementedError extends RuntimeError {
-                define init(str msg) {
-                    this.message = msg;
-                    this.code = 38;
-                }
-            }
-        class StopIteration extends Exception {
-            define init(str msg) {
-                this.message = msg;
-                this.code = 113;
-            }
-        }
-        class StopAsyncIteration extends Exception {
-            define init(str msg) {
-                this.message = msg;
-                this.code = 114; 
-            }
-        }
+class LookupError extends Exception {
+    define init(str msg, int err_code) {
+        this.message = msg;
+        this.code = err_code;
+    }
+}
 
+class IndexError extends LookupError {
+    define init(str msg) {
+        this.message = msg;
+        this.code = 99;
+    }
+}
 
-    class FatalError extends BaseException {
+class KeyError extends LookupError {
+    define init(str msg) {
+        this.message = msg;
+        this.code = 100;
+    }
+}
+
+class NameError extends Exception {
+    define init(str msg, int err_code) {
+        this.message = msg;
+        this.code = err_code;
+    }
+}
+
+class UnboundLocalError extends NameError {
+    define init(str msg) {
+        this.message = msg;
+        this.code = 101;
+    }
+}
+
+class ValueError extends Exception {
+    define init(str msg, int err_code) {
+        this.message = msg;
+        this.code = err_code;
+    }
+}
+
+class UnicodeError extends ValueError {
+    define init(str msg, int err_code) {
+        this.message = msg;
+        this.code = err_code;
+    }
+}
+
+class UnicodeEncodeError extends UnicodeError {
+    define init(str msg) {
+        this.message = msg;
+        this.code = 85;
+    }
+}
+
+class UnicodeDecodeError extends UnicodeError {
+    define init(str msg) {
+        this.message = msg;
+        this.code = 86;
+    }
+}
+
+class UnicodeTranslateError extends UnicodeError {
+    define init(str msg) {
+        this.message = msg;
+        this.code = 87;
+    }
+}
+
+class SyntaxError extends Exception {
+    define init(str msg, int err_code) {
+        this.message = msg;
+        this.code = err_code;
+    }
+}
+
+class IndentationError extends SyntaxError {
+    define init(str msg) {
+        this.message = msg;
+        this.code = 400; 
+    }
+}
+
+class TabError extends IndentationError {
+    define init(str msg) {
+        this.message = msg;
+        this.code = 401;
+    }
+}
+
+class OSError extends Exception {
+    define init(str msg, int err_code) {
+        this.message = msg;
+        this.code = err_code;
+    }
+}
+
+class FileNotFoundError extends OSError {
+    define init(str msg) {
+        this.message = msg;
+        this.code = 2; // ENOENT
+    }
+}
+
+class FileExistsError extends OSError {
+    define init(str msg) {
+        this.message = msg;
+        this.code = 17; 
+    }
+}
+
+class PermissionError extends OSError {
+    define init(str msg) {
+        this.message = msg;
+        this.code = 13; 
+    }
+}
+
+class TimeoutError extends OSError {
+    define init(str msg) {
+        this.message = msg;
+        this.code = 110; 
+    }
+}
+
+class IsADirectoryError extends OSError {
+    define init(str msg) {
+        this.message = msg;
+        this.code = 21; 
+    }
+}
+
+class NotADirectoryError extends OSError {
+    define init(str msg) {
+        this.message = msg;
+        this.code = 20; 
+    }
+}
+
+class ConnectionError extends OSError {
+    define init(str msg, int err_code) {
+        this.message = msg;
+        this.code = err_code;
+    }
+}
+
+class ConnectionRefusedError extends ConnectionError {
+    define init(str msg) {
+        this.message = msg;
+        this.code = 111; 
+    }
+}
+
+class BrokenPipeError extends ConnectionError {
+    define init(str msg) {
+        this.message = msg;
+        this.code = 32; 
+    }
+}
+
+class ConnectionAbortedError extends ConnectionError {
+    define init(str msg) {
+        this.message = msg;
+        this.code = 103; 
+    }
+}
+
+class ConnectionResetError extends ConnectionError {
+    define init(str msg) {
+        this.message = msg;
+        this.code = 104;
+    }
+}
+
+class AllegationError extends Exception {
+    define init(str msg) {
+        this.message = msg;
+        this.code = 1;
+    }
+}
+
+class TypeError extends Exception {
+    define init(str msg) {
+        this.message = msg;
+        this.code = 120;
+    }
+}
+
+class ReferenceError extends Exception {
+    define init(str msg) {
+        this.message = msg;
+        this.code = 103;
+    }
+}
+
+class AttributeError extends Exception {
+    define init(str msg) {
+        this.message = msg;
+        this.code = 104;
+    }
+}
+
+class EOFError extends Exception {
+    define init(str msg) {
+        this.message = msg;
+        this.code = 107;
+    }
+}
+
+class BufferError extends Exception {
+    define init(str msg) {
+        this.message = msg;
+        this.code = 105;
+    }
+}
+
+class ImportError extends Exception {
+    define init(str msg, int err_code) {
+        this.message = msg;
+        this.code = err_code;
+    }
+}
+
+class ModuleNotFoundError extends ImportError {
+    define init(str msg) {
+        this.message = msg;
+        this.code = 109;
+    }
+}
+
+class RuntimeError extends Exception {
+    define init(str msg, int err_code) {
+        this.message = msg;
+        this.code = err_code;
+    }
+}
+
+class NotImplementedError extends RuntimeError {
+    define init(str msg) {
+        this.message = msg;
+        this.code = 38;
+    }
+}
+
+class StopIteration extends Exception {
+    define init(str msg) {
+        this.message = msg;
+        this.code = 113;
+    }
+}
+
+class StopAsyncIteration extends Exception {
+    define init(str msg) {
+        this.message = msg;
+        this.code = 114; 
+    }
+}
+
+class FatalError extends BaseException {
     hex fault_addr;
 
     define init(str msg, int err_code, var addr) {
         this.message = msg;
         this.code = err_code;
-        this.fault_addr = addr;
+        this.fault_addr = addr cast hex;
     }
 
     define print_fatal() {
-        print("[CRITICAL ERROR: "); print(this.code); print("]: ");
-        print(this.message); print(" | Adress: ");
-        //HEX FONKISYONU BAĞLA
+        print("[CRITICAL ERROR "); print(this.code); print("]: ");
+        print(this.message); print(" | Address: ");
         print(this.fault_addr); print("\n");
     }
 }
 
-        class SystemExit extends FatalError {
-        define init(str msg, int status_code) {
-            this.message = msg;
-            this.code = status_code;
-            this.fault_addr = 0x00;
-        }        
-        }
+class SystemExit extends FatalError {
+    define init(str msg, int status_code) {
+        this.message = msg;
+        this.code = status_code;
+        this.fault_addr = 0x00 cast hex;
+    }        
+}
 
-        class KeyboardInterrupt extends FatalError {
-        define init(str msg) {
-            this.message = msg;
-            this.code = 130; // SIGINT 128 + 2
-            this.fault_addr = 0x00;
-        }
-        }
+class KeyboardInterrupt extends FatalError {
+    define init(str msg) {
+        this.message = msg;
+        this.code = 130; // SIGINT
+        this.fault_addr = 0x00 cast hex;
+    }
+}
 
-        class GeneratorExit extends FatalError {
-        define init(str msg) {
-            this.message = msg;
-            this.code = 1000; //Generator Teardown
-            this.fault_addr = 0x00;
-        }
-        }
-    
-        class MemoryError extends FatalError {
-        define init(str msg, var fail_addr) {
-            this.message = msg;
-            this.code = 12; // ENOMEM
-            this.fault_addr = fail_addr;
-        }
-        }
+class GeneratorExit extends FatalError {
+    define init(str msg) {
+        this.message = msg;
+        this.code = 1000;
+        this.fault_addr = 0x00 cast hex;
+    }
+}
 
-        class SystemError extends FatalError {
-            define init(str msg, int sys_err_code) {
-                this.message = msg;
-                this.code = sys_err_code;
-                this.fault_addr = 0x00;
-            }
-        }
+class MemoryError extends FatalError {
+    define init(str msg, var fail_addr) {
+        this.message = msg;
+        this.code = 12; // ENOMEM
+        this.fault_addr = fail_addr cast hex;
+    }
+}
 
-        class RecursionError extends FatalError {
-            define init(str msg, var stack_limit_addr) {
-                this.message = msg;
-                this.code = 139;
-                this.fault_addr = stack_limit_addr;
-            }
-        }
+class SystemError extends FatalError {
+    define init(str msg, int sys_err_code) {
+        this.message = msg;
+        this.code = sys_err_code;
+        this.fault_addr = 0x00 cast hex;
+    }
+}
 
+class RecursionError extends FatalError {
+    define init(str msg, var stack_limit_addr) {
+        this.message = msg;
+        this.code = 139;
+        this.fault_addr = stack_limit_addr cast hex;
+    }
+}
 
-
-
-
-    class Warning extends BaseException {
+class Warning extends BaseException {
     define init(str msg) {
         this.message = msg;
         this.code = 0;
@@ -355,69 +386,80 @@ class BaseException {
         print("[WARNING]: "); print(this.message); print("\n");
     }
 }
-        class DeprecationWarning extends Warning {
-            define init(str msg) {
-                this.message = msg;
-                this.code = 201;
-            }
-        }
-        class PendingDeprecationWarning extends Warning {
-            define init(str msg) {
-                this.message = msg;
-                this.code = 202;
-            }
-        }
-        class UserWarning extends Warning {
-            define init(str msg) {
-                this.message = msg;
-                this.code = 203;
-            }
-        }
-        class SyntaxWarning extends Warning {
-            define init(str msg) {
-                this.message = msg;
-                this.code = 204;
-            }
-        }
-        class RuntimeWarning extends Warning {
-            define init(str msg) {
-                this.message = msg;
-                this.code = 205;
-            }
-        }
-        class FutureWarning extends Warning {
-            define init(str msg) {
-                this.message = msg;
-                this.code = 206; 
-            }
-        }
-        class ImportWarning extends Warning {
-            define init(str msg) {
-                this.message = msg;
-                this.code = 207; 
-            }
-        }
-        class UnicodeWarning extends Warning {
-            define init(str msg) {
-                this.message = msg;
-                this.code = 208;
-            }
-        }
-        class BytesWarning extends Warning {
-            define init(str msg) {
-                this.message = msg;
-                this.code = 209; 
-            }
-        }
-        class ResourceWarning extends Warning {
-            define init(str msg) {
-                this.message = msg;
-                this.code = 210;
-            }
-        }
-        class EncodingWarning extends Warning {
-            define init(str msg) {
-                this.message = msg;
-                this.code = 211;
-            }
-        }
+
+class DeprecationWarning extends Warning {
+    define init(str msg) {
+        this.message = msg;
+        this.code = 201;
+    }
+}
+
+class PendingDeprecationWarning extends Warning {
+    define init(str msg) {
+        this.message = msg;
+        this.code = 202;
+    }
+}
+
+class UserWarning extends Warning {
+    define init(str msg) {
+        this.message = msg;
+        this.code = 203;
+    }
+}
+
+class SyntaxWarning extends Warning {
+    define init(str msg) {
+        this.message = msg;
+        this.code = 204;
+    }
+}
+
+class RuntimeWarning extends Warning {
+    define init(str msg) {
+        this.message = msg;
+        this.code = 205;
+    }
+}
+
+class FutureWarning extends Warning {
+    define init(str msg) {
+        this.message = msg;
+        this.code = 206; 
+    }
+}
+
+class ImportWarning extends Warning {
+    define init(str msg) {
+        this.message = msg;
+        this.code = 207; 
+    }
+}
+
+class UnicodeWarning extends Warning {
+    define init(str msg) {
+        this.message = msg;
+        this.code = 208;
+    }
+}
+
+class BytesWarning extends Warning {
+    define init(str msg) {
+        this.message = msg;
+        this.code = 209; 
+    }
+}
+
+class ResourceWarning extends Warning {
+    define init(str msg) {
+        this.message = msg;
+        this.code = 210;
+    }
+}
+
+class EncodingWarning extends Warning {
+    define init(str msg) {
+        this.message = msg;
+        this.code = 211;
+    }
+}

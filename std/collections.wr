@@ -4,7 +4,7 @@
 #/
 
 class List {
-    var data;
+    ptr data;
     int capacity;
     int length;
 
@@ -72,9 +72,9 @@ class Map {
 
     define set(str key, var value) -> int {
         var i = 0;
-        var len = this.keys.length;
+        var setlen = this.keys.length;
 
-        while (i < len) {
+        while (i < setlen) {
             if (this.keys.get(i) cast str =? key) {
                 this.values.set(i, value);
                 return 0;
@@ -89,9 +89,9 @@ class Map {
 
     define get(str key) -> any {
         var i = 0;
-        var len = this.keys.length;
+        var getlen = this.keys.length;
 
-        while (i < len) {
+        while (i < getlen) {
             if (this.keys.get(i) cast str =? key) {
                 return this.values.get(i);
             }
@@ -106,9 +106,9 @@ class Map {
 
     define has(str key) -> bool {
         var i = 0;
-        var len = this.keys.length;
+        var haslen = this.keys.length;
 
-        while (i < len) {
+        while (i < haslen) {
             if (this.keys.get(i) cast str =? key) {
                 return true;
             }
@@ -119,9 +119,9 @@ class Map {
 
     define destroy() {
         this.keys.destroy();
-        free(this.keys);
-
+        delete this.keys;
+            
         this.values.destroy();
-        free(this.values);
+        delete this.values;
     }
 }

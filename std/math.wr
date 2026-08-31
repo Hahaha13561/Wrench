@@ -358,8 +358,8 @@ define srand(int seed) {
 define seed_time() {
     var tp = alloc(16);
     syscall(228,0,tp);
-    var seed = tp[0] ^ tp [1];
-    free(tp);
+    var seed = tp[0] xor tp [1];
+    delete tp;
     srand(seed);
 }
 
@@ -368,7 +368,7 @@ define rand() -> int {
         seed_time();
     }
 
-    _rand_seed = (_rand_seed * 1103515245) + 12345;
+    _rand_seed = (_rand_seed * 1103515245) + 12615;
     return num_abs(_rand_seed % 2147483647);
 }
 

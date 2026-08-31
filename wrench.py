@@ -16,12 +16,16 @@ def resolve_imports(ast, current_dir, linked_objects, imported_asts=None, fully_
     if fully_included is None:
         fully_included = set()
 
+    compiler_dir = os.path.dirname(os.path.abspath(__file__))
+
     new_ast = []
     for node in ast:
         node_type = type(node).__name__
 
         if node_type == 'LinkNode':
             obj_file = node.target_str_tok[1].strip('"\'')
+            if not os.path.isabs(obj_file):
+                obj_file = os.path.normpath(os.path.join(current_dir, obj_file))
             linked_objects.add(obj_file)
 
         elif node_type == 'IncludeNode':
@@ -30,7 +34,7 @@ def resolve_imports(ast, current_dir, linked_objects, imported_asts=None, fully_
                 module_name += '.wr'
 
             if module_name.startswith("std/"):
-                module_path = os.path.normpath(os.path.join(os.getcwd(), module_name))
+                module_path = os.path.normpath(os.path.join(compiler_dir, module_name))
             else:
                 module_path = os.path.normpath(os.path.join(current_dir, module_name))
 
@@ -173,7 +177,7 @@ def compile_file(input_file, output_name=None, is_strict=True, keep_temps=False)
         sys.exit(1)
 
     if output_name is None:
-        output_name = os.path.splitext(os.path.basename(input_file))[0]
+        output_name = os.path.splitext(input_file)[0]
 
     asm_file = f"{output_name}.asm"
     obj_file = f"{output_name}.o"
@@ -265,8 +269,8 @@ if __name__ == '__main__':
     compile_file(args.input, args.output, strict_flag, args.keep)
 
     if args.run:
-        output_name = args.output if args.output else os.path.splitext(os.path.basename(args.input))[0]
-        exec_path = f"./{output_name}"
+        output_name = args.output if args.output else os.path.splitext(args.input)[0]
+        exec_path = os.path.abspath(output_name)
 
         try:
             print("-----------------------------------\n")

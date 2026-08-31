@@ -395,8 +395,9 @@ class SwitchNode:
 
 # Built-in Functions
 BUILTIN_FUNCTION = {
-    'print', 'printf', 'len', 'realloc', 'type_of', 'read', 'read_int', 'print_float', 'print_hex', 'exit', 'alloc', 'sys_argc', 
-    'sys_argv', 'get_mem', 'get_mem32', 'addr_of', 'ptr_to', 'syscall', 'free'
+    'print', 'printf', "print_int", 'print_float', 'print_hex', 'print_string', 'read', 'read_int',
+    'len', 'alloc', 'realloc', 'free', 'type_of', 'exit',
+    'sys_argc', 'sys_argv', 'get_mem', 'get_mem32', 'addr_of', 'ptr_to', 'syscall'
 }
 
 class Parser:
@@ -468,6 +469,15 @@ class Parser:
             
             type_tok = self.current_tok
             self.advance()
+
+            if self.current_tok is not None and self.current_tok[0] == 'PUNCTUATION' and self.current_tok[1] == '[':
+                self.advance()
+                if self.current_tok is None or self.current_tok[0] != 'PUNCTUATION' or self.current_tok[1] != ']':
+                    self.throw("Syntax Error: Expected ']' after '[' in type cast")
+                self.advance()
+                type_tok = (type_tok[0], type_tok[1] + "[]", type_tok[2], type_tok[3])
+
+            
             node = CastNode(node, type_tok)
         
         return node
@@ -680,7 +690,10 @@ class Parser:
 
     def comp_expr(self):
 
-        if self.current_tok is not None and self.current_tok[0] == 'KEYWORD' and self.current_tok[1] in ('not', 'await', 'wait'):
+        if self.current_tok is not None and (
+        (self.current_tok[0] == 'KEYWORD' and self.current_tok[1] in ('not', 'await', 'wait')) or
+        (self.current_tok[0] == 'OP_SINGLE' and self.current_tok[1] == '!')
+        ):
             op_tok = self.current_tok
             self.advance()
             node = self.comp_expr()
@@ -945,7 +958,7 @@ class Parser:
             self.advance()
 
         if self.current_tok is not None and (
-            (self.current_tok[0] == 'KEYWORD' and self.current_tok[1] in ('int', 'integer', 'double', 'char', 'str', 'string', 'bool', 'var')) or
+            (self.current_tok[0] == 'KEYWORD' and self.current_tok[1] in ('int', 'integer', 'double', 'char', 'str', 'string', 'bool', 'var', 'ptr', 'pointer', 'address', 'hex')) or
             (self.current_tok[0] == 'IDENTIFIER' and self.peek() is not None and self.peek()[0] == 'IDENTIFIER')
         ):
             type_tok = self.current_tok

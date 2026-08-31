@@ -15,7 +15,7 @@ define str_len(str text) -> int {
 
 define substring(str text, int start, int end) -> str {
     var length = end - start;
-    str result = alloc(length + 1);
+    str result = alloc(length + 1) cast str;
 
     var i = 0;
     while (i < length) {
@@ -28,7 +28,7 @@ define substring(str text, int start, int end) -> str {
 
 define uppercase(str text) -> str {
     var length = str_len(text);
-    str result = alloc(length+1);
+    str result = alloc(length+1) cast str;
 
     var i = 0;
     while (i < length) {
@@ -48,7 +48,7 @@ define uppercase(str text) -> str {
 
 define lowercase(str text) -> str {
     var length = str_len(text);
-    str result = alloc(length + 1);
+    str result = alloc(length + 1) cast str;
 
     var i = 0;
     while (i < length) {
@@ -66,13 +66,13 @@ define lowercase(str text) -> str {
     return result;
 }
 
-define split(str text, char delimeter) -> var {
+define split_raw(str text, char delimiter) -> var {
     var length = str_len(text);
     var count = 1;
     var i = 0;
 
     while (i < length) {
-        if (text[i] =? delimeter) {
+        if (text[i] =? delimiter) {
             count += 1;
         }
         i += 1;
@@ -84,7 +84,7 @@ define split(str text, char delimeter) -> var {
     i = 0;
 
     while (i <= length) {
-        if (text[i]  =? delimeter or text[i] =? 0 cast char) {
+        if (text[i]  =? delimiter or text[i] =? 0 cast char) {
             list[part_index] = substring(text, start, i);
             part_index += 1;
             start = i + 1;
@@ -93,6 +93,69 @@ define split(str text, char delimeter) -> var {
     }
 
     return list;
+}
+
+define split(str text, char delimiter) -> List {
+    List res = new List();
+    var length = str_len(text);
+    var start = 0;
+    var i = 0;
+
+    while (i <= length) {
+        if (text[i] =? delimiter or text[i] =? 0 cast char) {
+            res.push(substring(text, start, i));
+            start = i + 1;
+        }
+        i += 1;
+    }
+
+    return res;
+}
+
+define starts_with(str text, str prefix) -> bool {
+    var p_len = str_len(prefix);
+    var t_len = str_len(text);
+    if (p_len > t_len) {
+        return false;
+    }
+    var i = 0;
+    while (i < p_len) {
+        if (text[i] != prefix[i]) {
+            return false;
+        }
+        i += 1;
+    }
+    return true;
+}
+
+define ends_with(str text, str suffix) -> bool {
+    var s_len = str_len(suffix);
+    var t_len = str_len(text);
+    if (s_len > t_len) {
+        return false;
+    }
+    var start = t_len - s_len;
+    var i = 0;
+    while (i < s_len) {
+        if (text[start + i] != suffix[i]) {
+            return false;
+        }
+        i += 1;
+    }
+    return true;
+}
+
+define trim(str text) -> str {
+    var t_len = str_len(text);
+    var start = 0;
+    while (start < t_len and (text[start] =? 32 cast char or text[start] =? 9 cast char or text[start] =? 10 cast char)) {
+        start += 1;
+    }
+    var end = t_len;
+    while (end > start and (text[end - 1] =? 32 cast char or text[end - 1] =? 9 cast char or text[end - 1] =? 10 cast char)) {
+        end -= 1;
+    }
+    return substring(text, start, end);
 }
 
 define parse_int(str text) -> int {
