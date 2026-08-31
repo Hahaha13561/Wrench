@@ -1000,7 +1000,12 @@ class CodeGen:
         return node, active_shortcuts, pos_idx
 
     def _emit_str_coercion(self, expr_type):
-        """Turns the value in RAX into a string pointer in runtime."""
+        """Turns the value in RAX into a string pointer in runtime.
+        
+        NOTE: Implicit type coercion allocates temporary heap strings (via int_to_str/char_to_str).
+        These temporary allocations are not automatically reclaimed during expression evaluation.
+        For high-performance loops with heavy string operations, explicitly manage heap memory.
+        """
         if expr_type in ('str', 'string'):
             return
         elif expr_type in ('bool', 'boolean'):

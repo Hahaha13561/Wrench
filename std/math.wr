@@ -359,7 +359,7 @@ define seed_time() {
     var tp = alloc(16);
     syscall(228,0,tp);
     var seed = tp[0] xor tp [1];
-    free(tp);
+    delete tp;
     srand(seed);
 }
 
