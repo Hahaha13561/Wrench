@@ -95,7 +95,7 @@ class CodeGen:
                 self.generate(cond_node.left_node)
                 self.assembly.append("    mov rdi, rax")
                 self.assembly.append("    pop rsi")
-                self.assembly.append("    call compare_strings")
+                self.assembly.append("    call rt_compare_strings")
                 self.assembly.append("    test rax, rax")
 
                 #Inverse Jumps
@@ -145,7 +145,7 @@ class CodeGen:
             "section .text",
             "global _start",
             "",
-            "print_string:",
+            "rt_print_string:",
             "    push rbp",
             "    mov rbp, rsp",
             "    test rax, rax",
@@ -176,7 +176,7 @@ class CodeGen:
             "    pop rbp",
             "    ret",
             "",
-            "print_int:",
+            "rt_print_int:",
             "    push rbp",
             "    mov rbp, rsp",
             "    push rbx",
@@ -221,7 +221,7 @@ class CodeGen:
             "    pop rbp",
             "    ret",
             "",
-            "print_hex:",
+            "rt_print_hex:",
             "    push rbp",
             "    mov rbp, rsp",
             "    sub rsp, 32",
@@ -283,7 +283,7 @@ class CodeGen:
             "    mov rax, 15",
             "    syscall",
             "",
-            "print_float:",
+            "rt_print_float:",
             "    push rbp",
             "    mov rbp, rsp",
             "    movq xmm0, rax",
@@ -316,7 +316,7 @@ class CodeGen:
             "    pop rbp",
             "    ret",
             "",
-            "concat_strings:",
+            "rt_concat_strings:",
             "    push rbp",
             "    mov rbp, rsp",
             "    push rbx",
@@ -384,7 +384,7 @@ class CodeGen:
             "    pop rbp",
             "    ret",
             "",
-            "compare_strings:",
+            "rt_compare_strings:",
             "    push rbp",
             "    mov rbp, rsp",
             "    push rbx",
@@ -425,7 +425,7 @@ class CodeGen:
             "    pop rbp",
             "    ret",
             "",
-            "int_to_str:",
+            "rt_int_to_str:",
             "    push rbp",
             "    mov rbp, rsp",
             "    push rbx",
@@ -485,7 +485,7 @@ class CodeGen:
             "    pop rbp",
             "    ret",
             "",
-            "bool_to_str:",
+            "rt_bool_to_str:",
             "    push rbp",
             "    mov rbp, rsp",
             "    test rdi, rdi",
@@ -498,7 +498,7 @@ class CodeGen:
             "    mov rsp, rbp",
             "    pop rbp",
             "    ret",
-            "char_to_str:",
+            "rt_char_to_str:",
             "    push rbp",
             "    mov rbp, rsp",
             "    push rbx",
@@ -511,7 +511,7 @@ class CodeGen:
             "    mov rsp, rbp",
             "    pop rbp",
             "    ret",
-            "read_input:",
+            "rt_read_input:",
             "    push rbp",
             "    mov rbp, rsp",
             "    push rax",
@@ -538,7 +538,7 @@ class CodeGen:
             "    mov rsp, rbp",
             "    pop rbp",
             "    ret",
-            "read_int:",
+            "rt_read_int:",
             "    push rbp",
             "    mov rbp, rsp",
             "    push rbx",
@@ -581,7 +581,7 @@ class CodeGen:
             "    mov rsp, rbp",
             "    pop rbp",
             "    ret",
-            "str_to_int:",
+            "rt_str_to_int:",
             "    push rbp",
             "    mov rbp, rsp",
             "    push rbx",
@@ -621,7 +621,7 @@ class CodeGen:
             "    mov rsp, rbp",
             "    pop rbp",
             "    ret",
-            "int_pow:",
+            "rt_int_pow:",
             "    push rbp",
             "    mov rbp, rsp",
             "    mov rcx, rsi",
@@ -637,7 +637,7 @@ class CodeGen:
             "    pop rbp",
             "    ret",
             "",
-            "float_pow:",
+            "rt_float_pow:",
             "    push rbp",
             "    mov rbp, rsp",
             "    sub rsp, 16",
@@ -662,7 +662,7 @@ class CodeGen:
             "    pop rbp",
             "    ret",
             "",
-            "alloc:",
+            "rt_alloc:",
             "    push rbp",
             "    mov rbp, rsp",
             "    add rdi, 8",
@@ -696,7 +696,31 @@ class CodeGen:
             "    mov rsp, rbp",
             "    pop rbp",
             "    ret",
-            "free:",
+            "",
+            "rt_str_ndup:",
+            "    push rbp",
+            "    mov rbp, rsp",
+            "    push rdi",
+            "    push rsi",
+            "    mov rdi, rsi",
+            "    call alloc",
+            "    pop rsi",
+            "    pop rdi",
+            "    xor ecx, ecx",
+            ".ndup_copy_loop:",
+            "    cmp rcx, rsi",
+            "    je .ndup_copy_done",
+            "    mov dl, byte [rdi + rcx]",
+            "    mov byte [rax + rcx], dl",
+            "    inc rcx",
+            "    jmp .ndup_copy_loop",
+            ".ndup_copy_done:",
+            "    mov byte, [rax + rsi], 0", #Null Terminator
+            "    mov rsp, rbp",
+            "    pop rbp",
+            "    ret",
+            "",
+            "rt_free:",
             "    push rbp",
             "    mov rbp, rsp",
             "    test rdi, rdi",
@@ -711,7 +735,7 @@ class CodeGen:
             "    pop rbp",
             "    ret",
             "",
-            "set_mem:",
+            "rt_set_mem:",
             "    push rbp",
             "    mov rbp, rsp",
             "    mov qword [rdi + rsi], rdx",
@@ -719,7 +743,7 @@ class CodeGen:
             "    pop rbp",
             "    ret",
             "",
-            "get_mem:",
+            "rt_get_mem:",
             "    push rbp",
             "    mov rbp, rsp",
             "    mov rax, qword [rdi + rsi]",
@@ -727,7 +751,7 @@ class CodeGen:
             "    pop rbp",
             "    ret",
             "",
-            "get_mem32:",
+            "rt_get_mem32:",
             "    push rbp",
             "    mov rbp, rsp",
             "    movsxd rax, dword [rdi + rsi]",
@@ -735,7 +759,7 @@ class CodeGen:
             "    pop rbp",
             "    ret",
             "",
-            "get_len:",
+            "rt_get_len:",
             "    push rbp",
             "    mov rbp, rsp",
             "    sub rdi, 8",
@@ -745,7 +769,7 @@ class CodeGen:
             "    pop rbp",
             "    ret",
             "",
-            "realloc_mem:",
+            "rt_realloc_mem:",
             "    push rbp",
             "    mov rbp, rsp",
             "    sub rdi, 8",
@@ -764,7 +788,7 @@ class CodeGen:
             "    pop rbp",
             "    ret",
             "",
-            "exit_prog:",
+            "rt_exit_prog:",
             "    push rbp",
             "    mov rbp, rsp",
             "    mov eax, 60",
@@ -999,24 +1023,41 @@ class CodeGen:
 
         return node, active_shortcuts, pos_idx
 
+    def _is_temp_string(self, node):
+        """Checks whether the node produces a heap-allocated temporary string that needs to be freed."""
+        if node is None:
+            return False
+
+        ntype = type(node).__name__
+        if ntype in ('VarAccessNode', 'StringNode', 'MemberAccessNode'):
+            return False
+
+        if ntype == 'BinOpNode':
+            op_type = getattr(node, 'operand_type', getattr(node.left_node, 'eval_type', 'int'))
+            return op_type in ('str', 'string') and node.op_tok[1] == '+'
+
+        if ntype == 'CastNode':
+            return node.type_tok[1] in ('str', 'string')
+
+        if ntype == 'FuncCallNode':
+            ret_type = self._get_obj_type(node)
+            return ret_type in ('str', 'string')
+
+        return False
+
     def _emit_str_coercion(self, expr_type):
-        """Turns the value in RAX into a string pointer in runtime.
-        
-        NOTE: Implicit type coercion allocates temporary heap strings (via int_to_str/char_to_str).
-        These temporary allocations are not automatically reclaimed during expression evaluation.
-        For high-performance loops with heavy string operations, explicitly manage heap memory.
-        """
+        """Turns the value in RAX into a string pointer in runtime."""
         if expr_type in ('str', 'string'):
             return
         elif expr_type in ('bool', 'boolean'):
             self.assembly.append("    mov rdi, rax")
-            self.assembly.append("    call bool_to_str")
+            self.assembly.append("    call rt_bool_to_str")
         elif expr_type in ('char'):
             self.assembly.append("    mov rdi, rax")
-            self.assembly.append("    call char_to_str")
+            self.assembly.append("    call rt_char_to_str")
         else:
             self.assembly.append("    mov rdi, rax")
-            self.assembly.append("    call int_to_str")
+            self.assembly.append("    call rt_int_to_str")
        
     def enter_scope(self):
         """Creates a new local scope when a new { is opened."""
@@ -1192,7 +1233,7 @@ class CodeGen:
 
         # 4. Finds the Array length and saves.
         self.assembly.append("    mov rdi, rax")
-        self.assembly.append("    call get_len")
+        self.assembly.append("    call rt_get_len")
         self.assembly.append(f"    mov qword [rbp - {len_offset}], rax")
 
         # 5. Starts Index from 0
@@ -1259,7 +1300,7 @@ class CodeGen:
                 self._emit_str_coercion(var_type)
                 self.assembly.append("    mov rdi, rax") 
                 self.assembly.append("    pop rsi")      
-                self.assembly.append("    call concat_strings")
+                self.assembly.append("    call rt_concat_strings")
                 self.assembly.append(f"    mov {loc}, rax")
                 return
             elif op in ('='):
@@ -1318,7 +1359,7 @@ class CodeGen:
         elif op in ('^=', '=^'):
             self.assembly.append("    mov rsi, rax")
             self.assembly.append(f"    mov rdi, {loc}")
-            self.assembly.append("    call int_pow")
+            self.assembly.append("    call rt_int_pow")
             self.assembly.append(f"    mov {loc}, rax")
 
     def visit_AttemptNode(self, node):
@@ -1458,12 +1499,12 @@ class CodeGen:
         loc = self.get_var_loc(var_name)
         if loc is None:
             if (self.semantic_analyzer and hasattr(self.semantic_analyzer, 'functions') and var_name in self.semantic_analyzer.functions) or var_name in self.function_return_types:
-                self.assembly.append(f"    lea rax, [rel {var_name}]")
+                self.assembly.append(f"    lea rax, [rel fn_{var_name}]")
                 return
             raise RuntimeError(f"{var_name} is not found.")
         self.assembly.append(f"    mov rax, {loc}")
 
-    def visit_BinOpNode(self, node):
+    def visit_BinOpNode(self, node):    
         """Reduces mathematics, comparison, and string operations to assembly language."""
         self.generate(node.right_node)
         
@@ -1475,19 +1516,41 @@ class CodeGen:
             # --- STRING ---
             op = node.op_tok[1]
             if op == '+':
+                left_is_temp = self._is_temp_string(node.left_node)
+                right_is_temp = self._is_temp_string(node.right_node)
+
                 self._emit_str_coercion(right_type)
                 self.assembly.append("    push rax")
                 self.generate(node.left_node)
                 self._emit_str_coercion(left_type)
                 self.assembly.append("    mov rdi, rax")
                 self.assembly.append("    pop rsi")
-                self.assembly.append("    call concat_strings")
+                self.assembly.append("    push rax")
+
+                self.assembly.append("    mov rdi, qword [rsp]")
+                self.assembly.append("    mov rsi, qword [rsp + 8]")
+                self.assembly.append("    call rt_concat_strings")
+
+                if left_is_temp or right_is_temp:
+                    self.assembly.append("    push rax")
+
+                    if left_is_temp:
+                        self.assembly.append("    mov rdi, qword [rsp + 8]")
+                        self.assembly.append("    call rt_free")
+
+                    if right_is_temp:
+                        self.assembly.append("    mov rdi, qword [rsp + 16]")
+                        self.assembly.append("    call rt_free")
+
+                    self.assembly.append("    pop rax") # Restore result RAX
+
+                self.assembly.append("    add rsp, 16") # Clean left & right ptrs from stack
             elif op in ('=?', '?=', '!=', '=!', '>', '<', '>=', '=>', '<=', '=<', 'is', 'same'):
                 self.assembly.append("    push rax")
                 self.generate(node.left_node)
                 self.assembly.append("    mov rdi, rax")
                 self.assembly.append("    pop rsi")
-                self.assembly.append("    call compare_strings")
+                self.assembly.append("    call rt_compare_strings")
                 self.assembly.append("    test rax, rax")
 
                 if op in ('=?', '?=', 'is', 'same'): self.assembly.append("    sete al") 
@@ -1541,7 +1604,7 @@ class CodeGen:
                 self.assembly.append("    add rsp, 16")
                 self.assembly.append("    movq rax, xmm0")
             elif op == '^':
-                self.assembly.append("    call float_pow")
+                self.assembly.append("    call rt_float_pow")
                 self.assembly.append("    movq rax, xmm0")
             elif op in ('=?', '?=', '!=', '=!', '>', '<', '>=', '=>', '<=', '=<', 'is', 'same'):
                 self.assembly.append("    ucomisd xmm0, xmm1")
@@ -1581,7 +1644,7 @@ class CodeGen:
             elif op == '^':
                 self.assembly.append("    mov rdi, rax")
                 self.assembly.append("    mov rsi, rbx")
-                self.assembly.append("    call int_pow")
+                self.assembly.append("    call rt_int_pow")
             elif op == 'and':
                 self.assembly.append("    and rax, rbx")
             elif op == 'or':
@@ -1663,16 +1726,16 @@ class CodeGen:
                 self.assembly.append(f"{true_lbl}:")
                 self.assembly.append("    lea rax, [rel bool_true_msg]")  
                 self.assembly.append(f"{end_lbl}:")
-                self.assembly.append("    call print_string")
+                self.assembly.append("    call rt_print_string")
                 return
             
             if arg_type in ('hex', 'ptr', 'pointer', 'address'):
-                self.assembly.append("    call print_hex")
+                self.assembly.append("    call rt_print_hex")
 
             elif arg_type in ('int', 'integer', 'any', 'var'):
-                self.assembly.append("    call print_int")
+                self.assembly.append("    call rt_print_int")
             elif arg_type in ('double', 'float'):
-                self.assembly.append("    call print_float")
+                self.assembly.append("    call rt_print_float")
             elif arg_type == 'char':
                 self.assembly.append("    push rax")
                 self.assembly.append("    mov rsi, rsp") # Top of address stack
@@ -1682,7 +1745,7 @@ class CodeGen:
                 self.assembly.append("    syscall")
                 self.assembly.append("    pop rax")
             else:
-                self.assembly.append("    call print_string")
+                self.assembly.append("    call rt_print_string")
             return
 
         elif func_name == 'printf':
@@ -1705,7 +1768,7 @@ class CodeGen:
                         if text_content:
                             str_node = StringNode(('', f'"{text_content}"', 0, 0))
                             self.generate(str_node)
-                            self.assembly.append("    call print_string")
+                            self.assembly.append("    call rt_print_string")
                 
                     elif chunk[0] == 'PLACEHOLDER':
                         _, expr_str, specifiers = chunk
@@ -1716,11 +1779,11 @@ class CodeGen:
 
 
                         if 'x' in shortcuts or 'X' in shortcuts or eval_type in ('hex', 'ptr', 'pointer', 'address'):
-                            self.assembly.append("    call print_hex")
+                            self.assembly.append("    call rt_print_hex")
                         elif 'f' in shortcuts or eval_type in ('double', 'float'):
-                            self.assembly.append("    call print_float")
+                            self.assembly.append("    call rt_print_float")
                         elif 'd' in shortcuts or 'i' in shortcuts or eval_type in ('int', 'integer', 'bool', 'any', 'var'):
-                            self.assembly.append("    call print_int")
+                            self.assembly.append("    call rt_print_int")
                         elif eval_type == 'char':
                             self.assembly.append("    push rax")
                             self.assembly.append("    mov rsi, rsp")
@@ -1730,7 +1793,7 @@ class CodeGen:
                             self.assembly.append("    syscall")
                             self.assembly.append("    pop rax")
                         else:
-                            self.assembly.append("    call print_string")
+                            self.assembly.append("    call rt_print_string")
                 return
 
             else:
@@ -1739,11 +1802,11 @@ class CodeGen:
                     eval_type = getattr(arg, 'eval_type', None) or self._get_obj_type(arg) or 'string'
 
                     if eval_type in ('hex', 'ptr', 'pointer', 'address'):
-                        self.assembly.append("    call print_hex")
+                        self.assembly.append("    call rt_print_hex")
                     elif eval_type in ('int', 'integer', 'bool'):
-                        self.assembly.append("    call print_int")
+                        self.assembly.append("    call rt_print_int")
                     elif eval_type in ('double', 'float'):
-                        self.assembly.append("    call print_float")
+                        self.assembly.append("    call rt_print_float")
                     elif eval_type == 'char':
                         self.assembly.append("    push rax")
                         self.assembly.append("    mov rsi, rsp")
@@ -1753,14 +1816,14 @@ class CodeGen:
                         self.assembly.append("    syscall")
                         self.assembly.append("    pop rax")
                     else:
-                        self.assembly.append("    call print_string")
+                        self.assembly.append("    call rt_print_string")
                 return
 
 
         elif func_name == 'len':
             self.generate(node.arg_nodes[0]) # Take the parameter into RAX
             self.assembly.append("    mov rdi, rax")
-            self.assembly.append("    call get_len")
+            self.assembly.append("    call rt_get_len")
             return
         
         elif func_name == 'realloc':
@@ -1769,7 +1832,7 @@ class CodeGen:
             self.generate(node.arg_nodes[0]) # First parameter (old pointer)
             self.assembly.append("    mov rdi, rax")
             self.assembly.append("    pop rsi") # Pull the second parameter into RSI
-            self.assembly.append("    call realloc_mem")
+            self.assembly.append("    call rt_realloc_mem")
             return
 
         elif func_name == 'type_of':
@@ -1786,33 +1849,42 @@ class CodeGen:
 
         elif func_name == 'read':
             self.generate(node.arg_nodes[0])
-            self.assembly.append("    call read_input")
+            self.assembly.append("    call rt_read_input")
             return
         
         elif func_name == 'read_int':
-            self.assembly.append("    call read_int")
+            self.assembly.append("    call rt_read_int")
             return
         
         elif func_name == 'print_float':
             self.generate(node.arg_nodes[0])
-            self.assembly.append("    call print_float")
+            self.assembly.append("    call rt_print_float")
             return
 
         elif func_name == 'print_hex':
             self.generate(node.arg_nodes[0])
-            self.assembly.append("    call print_hex")
+            self.assembly.append("    call rt_print_hex")
             return
 
         elif func_name == 'exit':
             self.generate(node.arg_nodes[0])
             self.assembly.append("    mov rdi, rax")
-            self.assembly.append("    call exit_prog")
+            self.assembly.append("    call rt_exit_prog")
             return
         
         elif func_name == 'alloc':
             self.generate(node.arg_nodes[0])
             self.assembly.append("    mov rdi, rax")
-            self.assembly.append("    call alloc")
+            self.assembly.append("    call rt_alloc")
+            return
+
+        elif func_name == 'str_ndup':
+            self.generate(node.arg_nodes[1])
+            self.assembly.append("    push rax")
+            self.generate(node.arg_nodes[0])
+            self.assembly.append("    mov rdi, rax")
+            self.assembly.append("    pop rsi")
+            self.assembly.append("    call rt_str_ndup")
             return
 
         elif func_name == 'sys_argc':
@@ -1831,7 +1903,7 @@ class CodeGen:
             self.generate(node.arg_nodes[0])  # ptr -> RAX
             self.assembly.append("    mov rdi, rax")
             self.assembly.append("    pop rsi")
-            self.assembly.append("    call get_mem")
+            self.assembly.append("    call rt_get_mem")
             return
 
         elif func_name == 'get_mem32':
@@ -1840,7 +1912,7 @@ class CodeGen:
             self.generate(node.arg_nodes[0])  # ptr -> RAX
             self.assembly.append("    mov rdi, rax")
             self.assembly.append("    pop rsi")
-            self.assembly.append("    call get_mem32")
+            self.assembly.append("    call rt_get_mem32")
             return
 
         elif func_name == 'addr_of' or func_name == 'ptr_to':
@@ -1883,11 +1955,18 @@ class CodeGen:
             self.assembly.append(f"    pop {arg_registers[i]}") 
 
         loc = self.get_var_loc(func_name)
+        is_user_func = (
+            (self.semantic_analyzer and hasattr(self.semantic_analyzer, 'functions') and func_name in self.semantic_analyzer.functions)
+            or (func_name in self.function_return_types) 
+        )
+        if loc is None and not is_user_func:
+            raise Exception(f"Compile Error: Undefined function '{func_name}'")
+        
         if loc is not None:
             self.assembly.append(f"    mov rax, {loc}")
             self.assembly.append("    call rax")
         else:
-            self.assembly.append(f"    call {func_name}")
+            self.assembly.append(f"    call fn_{func_name}")
 
         extra_args = max(0, arg_count - 6)
         if extra_args > 0:
@@ -1897,11 +1976,11 @@ class CodeGen:
         """Creates a new function and configures Scope settings."""
         if node.modifier_tok and node.modifier_tok[1] == 'extern':
             func_name = node.func_name_tok[1]
-            self.data_section.append(f"; extern {func_name}")
+            self.data_section.append(f"; extern fn_{func_name}")
             return
 
         func_name = node.func_name_tok[1]
-        exit_label = f"exit_func_{func_name}"
+        exit_label = f"exit_fn_{func_name}"
 
         main_assembly = self.assembly
         self.assembly = self.functions_code
@@ -1909,7 +1988,7 @@ class CodeGen:
         old_exit_label = self.current_func_exit_label
         self.current_func_exit_label = exit_label
         self.assembly.append("")
-        self.assembly.append(f"{func_name}:")
+        self.assembly.append(f"fn_{func_name}:")
         self.assembly.append("    push rbp")
         self.assembly.append("    mov rbp, rsp")
 
@@ -2278,7 +2357,7 @@ class CodeGen:
                 self.assembly.append("    mov rsi, rcx")
                 self.assembly.append("    push rax")
                 self.assembly.append("    push rbx")
-                self.assembly.append("    call int_pow")
+                self.assembly.append("    call rt_int_pow")
                 self.assembly.append("    mov rcx, rax")
                 self.assembly.append("    pop rbx")
                 self.assembly.append("    pop rax")
@@ -2375,7 +2454,7 @@ class CodeGen:
             self.assembly.append(f"    mov rdi, qword [rax + {offset}]")
             self.assembly.append("    mov rsi, rcx")
             self.assembly.append("    push rax")
-            self.assembly.append("    call int_pow")
+            self.assembly.append("    call rt_int_pow")
             self.assembly.append("    mov rcx, rax")
             self.assembly.append("    pop rax")
             self.assembly.append(f"    mov qword [rax + {offset}], rcx")
@@ -2394,7 +2473,7 @@ class CodeGen:
 
         self.assembly.append(f"    mov rax, {class_size}")
         self.assembly.append("    mov rdi, rax")
-        self.assembly.append("    call alloc")
+        self.assembly.append("    call rt_alloc")
 
         self.assembly.append("    push rax")
 
@@ -2538,7 +2617,7 @@ class CodeGen:
 
         self.assembly.append(f"    mov eax, {alloc_size}")
         self.assembly.append("    mov rdi, rax")
-        self.assembly.append("    call alloc")
+        self.assembly.append("    call rt_alloc")
 
         self.assembly.append("    push rax")
 
@@ -2609,13 +2688,13 @@ class CodeGen:
         if target_type in ('str', 'string'):
             if source_type in ('int', 'integer'):
                 self.assembly.append("    mov rdi, rax")
-                self.assembly.append("    call int_to_str")
+                self.assembly.append("    call rt_int_to_str")
             elif source_type in ('bool', 'boolean'):
                 self.assembly.append("    mov rdi, rax")
-                self.assembly.append("    call bool_to_str")
+                self.assembly.append("    call rt_bool_to_str")
             elif source_type == 'char':
                 self.assembly.append("    mov rdi, rax")
-                self.assembly.append("    call char_to_str")
+                self.assembly.append("    call rt_char_to_str")
                 
         elif target_type == 'bool':
             if source_type == 'double':
@@ -2636,7 +2715,7 @@ class CodeGen:
 
         elif target_type in ('int', 'integer') and source_type in ('str', 'string'):
             self.assembly.append("    mov rdi, rax")
-            self.assembly.append("    call str_to_int")
+            self.assembly.append("    call rt_str_to_int")
             
         elif target_type == 'double' and source_type in ('int', 'integer', 'any', 'var'):
             self.assembly.append("    cvtsi2sd xmm0, rax")
@@ -2652,7 +2731,7 @@ class CodeGen:
     def visit_DeleteNode(self, node):
         self.generate(node.target_node)
         self.assembly.append("    mov rdi, rax")
-        self.assembly.append("    call free")
+        self.assembly.append("    call rt_free")
 
     def visit_AllegeNode(self, node):
         self.generate(node.condition)
@@ -2700,7 +2779,7 @@ class CodeGen:
 
         self.assembly.append("    mov rdi, rcx")
         self.assembly.append("    shl rdi, 3") 
-        self.assembly.append("    call alloc")
+        self.assembly.append("    call rt_alloc")
         self.assembly.append("    mov r8, rax")
 
         self.assembly.append("    pop rcx") 
