@@ -1,14 +1,14 @@
+from emitter import AsmEmitter
+
 class CodeGen:
     def __init__(self, semantic_analyzer=None):
-        self.assembly = []
-        self.functions_code = [] # Serbest fonksiyonlar ve metotların bağımsız bloğu
-        self.current_func_exit_label = None # Ortak çıkış etiketi
-        self.environments = [{}] # Hafıza offset'lerini tutan Symbol Table
-        self.stack_offset = 0 # RAM'de kaç bayt aşağı inildiği (Offset Tracker)
-        self.label_count = 0 # Label sayacı
-        self.data_section = [] # Statik metin verilerinin tutulacağı kısım
-        self.string_count = 0 # String etiketleri sayacı
-        self.class_layouts = {} # Sınıf boyutları
+        self.emit = AsmEmitter()
+        self.current_func_exit_label = None
+        self.environments = [{}]
+        self.stack_offset = 0
+        self.label_count = 0
+        self.string_count = 0
+        self.class_layouts = {}
         self.type_environments = [{}]
         self.current_class = None
         self.loop_stack = []
@@ -43,787 +43,119 @@ class CodeGen:
         visitor = getattr(self, method_name, self.generic_visit)
         return visitor(node)
 
-    def generate_branch(self, cond_node, false_label):
-        """Turns the Condition Statements into Inverse JMP instructions."""
+    def _can_use_direct_rhs(self, node):
+        """Returns an immediate or memory operand string if RHS can be used directly without stack push/pop."""
+        ntype = type(node).__name__
+        if ntype == 'NumberNode' and node.tok[0] != 'FLOAT':
+            val = int(node.tok[1], 0)
+            if -2147483648 <= val <= 2147483647:
+                return node.tok[1]
+        elif ntype == 'VarAccessNode':
+            return self.get_var_loc(node.var_name_tok[1])
+        return None
 
-        #If the condition is a BinOp:
+    def _emit_raise_error(self, err_code):
+        """Emits standard runtime exception unwinding or exits with err_code if uncaught."""
+        crash_lbl = self.get_new_label("CRASH")
+        self.emit.mov("eax", err_code)
+        self.emit.mov("rbx", "qword [rel global_err_frame]")
+        self.emit.cmp("rbx", 0)
+        self.emit.jcc("e", crash_lbl)
+        self.emit.mov("rcx", "qword [rbx + 24]")
+        self.emit.mov("qword [rel global_err_frame]", "rcx")
+        self.emit.mov("rdx", "qword [rbx + 16]")
+        self.emit.mov("rbp", "qword [rbx + 8]")
+        self.emit.mov("rsp", "qword [rbx]")
+        self.emit.jmp("rdx")
+        self.emit.label(crash_lbl)
+        self.emit.mov("rdi", "rax")
+        self.emit.mov("eax", 60)
+        self.emit.syscall()
+
+    def _emit_print_char(self):
+        """Prints the single byte in AL to stdout."""
+        self.emit.push("rax")
+        self.emit.mov("rsi", "rsp")
+        self.emit.mov("edi", 1)
+        self.emit.mov("edx", 1)
+        self.emit.mov("eax", 1)
+        self.emit.syscall()
+        self.emit.pop("rax")
+
+    def generate_branch(self, cond_node, false_label):
+        """Turns Condition Statements into Inverse JMP instructions."""
         if type(cond_node).__name__ == 'BinOpNode':
             op = cond_node.op_tok[1]
             op_type = getattr(cond_node, 'operand_type', getattr(cond_node.left_node, 'eval_type', 'int'))
 
-            #Integer comparisions
+            # Integer / Pointer / Bool comparisons
             if op_type in ('int', 'integer', 'bool', 'ptr', 'pointer') and op in ('=?', '?=', 'is', 'same', '!=', '=!', '>', '<', '>=', '=>', '<=', '=<'):
-                self.generate(cond_node.left_node)
-                self.assembly.append("    push rax")
-                self.generate(cond_node.right_node)
-                self.assembly.append("    mov rbx, rax")
-                self.assembly.append("    pop rax")
-                self.assembly.append("    cmp rax, rbx")
+                direct_rhs = self._can_use_direct_rhs(cond_node.right_node)
+                if direct_rhs is not None:
+                    self.generate(cond_node.left_node)
+                    self.emit.cmp("rax", direct_rhs)
+                else:
+                    self.generate(cond_node.right_node)
+                    self.emit.push("rax")
+                    self.generate(cond_node.left_node)
+                    self.emit.pop("rbx")
+                    self.emit.cmp("rax", "rbx")
 
-                #Inverse jumps
-                if op in ('=?', '?=', 'is', 'same'): self.assembly.append(f"    jne {false_label}")
-                elif op in ('!=', '=!'):            self.assembly.append(f"    je {false_label}")
-                elif op == '>':                     self.assembly.append(f"    jle {false_label}")
-                elif op == '<':                     self.assembly.append(f"    jge {false_label}")
-                elif op in ('>=', '=>'):            self.assembly.append(f"    jl {false_label}")
-                elif op in ('<=', '=<'):            self.assembly.append(f"    jg {false_label}")
+                if op in ('=?', '?=', 'is', 'same'):   self.emit.jcc("ne", false_label)
+                elif op in ('!=', '=!'):              self.emit.jcc("e", false_label)
+                elif op == '>':                       self.emit.jcc("le", false_label)
+                elif op == '<':                       self.emit.jcc("ge", false_label)
+                elif op in ('>=', '=>'):              self.emit.jcc("l", false_label)
+                elif op in ('<=', '=<'):              self.emit.jcc("g", false_label)
                 return
 
-            #Float/Double Comparisions
+            # Float/Double comparisons
             elif op_type == 'double' and op in ('=?', '?=', 'is', 'same', '!=', '=!', '>', '<', '>=', '=>', '<=', '=<'):
                 self.generate(cond_node.right_node)
-                self.assembly.append("    push rax")
+                self.emit.push("rax")
                 self.generate(cond_node.left_node)
-                self.assembly.append("    movq xmm0, rax")
-                self.assembly.append("    movq xmm1, [rsp]")
-                self.assembly.append("    add rsp, 8")
-                self.assembly.append("    ucomisd xmm0, xmm1")
+                self.emit.inst("movq", "xmm0", "rax")
+                self.emit.inst("movq", "xmm1", "[rsp]")
+                self.emit.add("rsp", 8)
+                self.emit.inst("ucomisd", "xmm0", "xmm1")
 
-                #Inverse Jumps
-                if op in ('=?', '?=', 'is', 'same'): self.assembly.append(f"    jne {false_label}")
-                elif op in ('!=', '=!'):            self.assembly.append(f"    je {false_label}")
-                elif op == '>':                     self.assembly.append(f"    jbe {false_label}")
-                elif op == '<':                     self.assembly.append(f"    jae {false_label}")
-                elif op in ('>=', '=>'):            self.assembly.append(f"    jb {false_label}")
-                elif op in ('<=', '=<'):            self.assembly.append(f"    ja {false_label}")
+                if op in ('=?', '?=', 'is', 'same'):   self.emit.jcc("ne", false_label)
+                elif op in ('!=', '=!'):              self.emit.jcc("e", false_label)
+                elif op == '>':                       self.emit.jcc("be", false_label)
+                elif op == '<':                       self.emit.jcc("ae", false_label)
+                elif op in ('>=', '=>'):              self.emit.jcc("b", false_label)
+                elif op in ('<=', '=<'):              self.emit.jcc("a", false_label)
                 return
 
-            #String Comparisions
+            # String comparisons
             elif op_type in ('str', 'string') and op in ('=?', '?=', 'is', 'same', '!=', '=!', '>', '<', '>=', '=>', '<=', '=<'):
                 self.generate(cond_node.right_node)
-                self.assembly.append("    push rax")
+                self.emit.push("rax")
                 self.generate(cond_node.left_node)
-                self.assembly.append("    mov rdi, rax")
-                self.assembly.append("    pop rsi")
-                self.assembly.append("    call rt_compare_strings")
-                self.assembly.append("    test rax, rax")
+                self.emit.mov("rdi", "rax")
+                self.emit.pop("rsi")
+                self.emit.call_rt("rt_compare_strings")
+                self.emit.cmp("rax", 0)
 
-                #Inverse Jumps
-                if op in ('=?', '?=', 'is', 'same'): self.assembly.append(f"    jne {false_label}")
-                elif op in ('!=', '=!'):            self.assembly.append(f"    je {false_label}")
-                elif op == '>':                     self.assembly.append(f"    jle {false_label}")
-                elif op == '<':                     self.assembly.append(f"    jge {false_label}")
-                elif op in ('>=', '=>'):            self.assembly.append(f"    jl {false_label}")
-                elif op in ('<=', '=<'):            self.assembly.append(f"    jg {false_label}")
+                if op in ('=?', '?=', 'is', 'same'):   self.emit.jcc("ne", false_label)
+                elif op in ('!=', '=!'):              self.emit.jcc("e", false_label)
+                elif op == '>':                       self.emit.jcc("le", false_label)
+                elif op == '<':                       self.emit.jcc("ge", false_label)
+                elif op in ('>=', '=>'):              self.emit.jcc("l", false_label)
+                elif op in ('<=', '=<'):              self.emit.jcc("g", false_label)
                 return
 
         self.generate(cond_node)
-        self.assembly.append("    test rax, rax")
-        self.assembly.append(f"    je {false_label}")
+        self.emit.cmp("rax", 0)
+        self.emit.jcc("e", false_label)
 
     def generic_visit(self, node):
-        raise Exception (f'ERROR: No Assembly Translation for {type(node).__name__}.')
+        raise Exception(f'ERROR: No Assembly Translation for {type(node).__name__}.')
 
     def get_code(self):
-        """Combines assembly code to produce an executable NASM template."""
+        """Produces the final NASM assembly output via AsmEmitter."""
+        return self.emit.build()
 
-        data_code = [
-            "section .data",
-            "    empty_str db 0",
-            "    null_print_msg db `(null)`, 0",
-            "    dot_str db `.`, 0",
-            "    bool_true_msg db `true`, 0",
-            "    bool_false_msg db `false`, 0",
-            "    segfault_msg db `[CRITICAL]: Violated Memory Adress -->`, 0",
-            "    unhandled_msg db `[FATAL]: Uncaught Segfault! Program Terminated.`, 10, 0",
-            "global_err_frame dq 0",
-            "global_argc dq 0",
-            "global_argv dq 0",
-            "",
-            "sigaction_struct:",
-            "    dq sigsegv_handler    ; sa_sigaction",
-            "    dq 0x44000004    ; sa_flags: SA_SIGINFO (0x4) | SA_RESTORER(0x04000000) | SA_NODEFER (0x40000000)",
-            "    dq sig_restorer    ; sa_restorer",
-            "    dq 0    ; sa_mask"
-        ]
-
-        if self.data_section:
-            data_code.extend(self.data_section)
-            data_code.append("")
-
-        header = [
-            "section .text",
-            "global _start",
-            "",
-            "rt_print_string:",
-            "    push rbp",
-            "    mov rbp, rsp",
-            "    test rax, rax",
-            "    je .print_null_str",
-            "    mov rbx, rax",
-            "    xor ecx, ecx",
-            ".strlen_loop:",
-            "    cmp byte [rbx + rcx], 0",
-            "    je .strlen_done",
-            "    inc rcx",
-            "    jmp .strlen_loop",
-            ".strlen_done:",
-            "    mov rdx, rcx",
-            "    mov rsi, rbx",
-            "    mov edi, 1",
-            "    mov eax, 1",
-            "    syscall",
-            "    mov rsp, rbp",
-            "    pop rbp",
-            "    ret",
-            ".print_null_str:",
-            "    mov eax, 1",
-            "    mov edi, 1",
-            "    lea rsi, [rel null_print_msg]",
-            "    mov edx, 6",
-            "    syscall",
-            "    mov rsp, rbp",
-            "    pop rbp",
-            "    ret",
-            "",
-            "rt_print_int:",
-            "    push rbp",
-            "    mov rbp, rsp",
-            "    push rbx",
-            "    sub rsp, 32",
-            "    mov ebx, 10",
-            "    xor ecx, ecx",
-            "    xor r8d, r8d",
-            "    test rax, rax",
-            "    jge .divide_loop",
-            "    neg rax",
-            "    mov r8d, 1",
-            ".divide_loop:",
-            "    xor edx, edx",
-            "    div rbx",
-            "    add rdx, 48",
-            "    push rdx",
-            "    inc rcx",
-            "    test rax, rax",
-            "    jne .divide_loop",
-            "    cmp r8, 1",
-            "    jne .pop_chars",
-            "    push 45",
-            "    inc rcx",
-            ".pop_chars:",
-            "    xor edi, edi",
-            ".pop_loop:",
-            "    cmp rdi, rcx",
-            "    je .print_num",
-            "    pop rax",
-            "    mov byte [rbp - 32 + rdi], al",
-            "    inc rdi",
-            "    jmp .pop_loop",
-            ".print_num:",
-            "    mov rax, 1",
-            "    mov rdi, 1",
-            "    lea rsi, [rbp - 32]",
-            "    mov rdx, rcx",
-            "    syscall",
-            "    add rsp, 32",
-            "    pop rbx",
-            "    mov rsp, rbp",
-            "    pop rbp",
-            "    ret",
-            "",
-            "rt_print_hex:",
-            "    push rbp",
-            "    mov rbp, rsp",
-            "    sub rsp, 32",
-            "    mov byte [rbp - 32], 48",
-            "    mov byte [rbp - 31], 120",
-            "    mov ecx, 16",
-            "    mov ebx, 2",
-            ".hex_loop:",
-            "    mov rdx, rax",
-            "    shr rdx, 60",
-            "    and rdx, 0xF",
-            "    cmp dl, 9",
-            "    jle .is_num",
-            "    add dl, 87",
-            "    jmp .store_hex",
-            ".is_num:",
-            "    add dl, 48",
-            ".store_hex:",
-            "    mov byte [rbp - 32 + rbx], dl",
-            "    inc rbx",
-            "    shl rax, 4",
-            "    dec rcx",
-            "    jnz .hex_loop",
-            "    mov byte [rbp - 32 + rbx], 0",
-            "",
-            "    mov rax, 1",
-            "    mov rdi, 1",
-            "    lea rsi, [rbp - 32]",
-            "    mov rdx, 18",
-            "    syscall",
-            "    add rsp, 32",
-            "    mov rsp, rbp",
-            "    pop rbp",
-            "    ret",
-            "",
-            "sigsegv_handler:",
-            "    mov rax, qword [rsi + 16]",
-            "    mov rbx, qword [rel global_err_frame]",
-            "    cmp rbx, 0",
-            "    je .unhandled_segfault",
-            "    mov rcx, qword [rbx + 24]",
-            "    mov qword [rel global_err_frame], rcx",
-            "    mov rdx, qword [rbx + 16]",
-            "    mov rbp, qword [rbx + 8]",
-            "    mov rsp, qword [rbx]",
-            "    jmp rdx",
-            "",
-            ".unhandled_segfault:",
-            "    mov rax, 1",
-            "    mov rdi, 1",
-            "    lea rsi, [rel unhandled_msg]",
-            "    mov rdx, 56",
-            "    syscall",
-            "    mov eax, 60",
-            "    mov rdi, 139",
-            "    syscall",
-            "",
-            "sig_restorer:",
-            "    mov rax, 15",
-            "    syscall",
-            "",
-            "rt_print_float:",
-            "    push rbp",
-            "    mov rbp, rsp",
-            "    movq xmm0, rax",
-            "    sub rsp, 16",
-            "    movsd [rsp], xmm0",
-            "    cvttsd2si rbx, xmm0",
-            "    push rbx",
-            "    mov rax, rbx",
-            "    call print_int",
-            "    mov rax, 1",
-            "    mov rdi, 1",
-            "    lea rsi, [rel dot_str]",
-            "    mov rdx, 1",
-            "    syscall",
-            "    movsd xmm0, [rsp]",
-            "    add rsp, 16",
-            "    cvtsi2sd xmm1, rbx",
-            "    subsd xmm0, xmm1",
-            "    mov rax, 100000",
-            "    cvtsi2sd xmm1, rax",
-            "    mulsd xmm0, xmm1",
-            "    cvttsd2si rax, xmm0",
-            "    test rax, rax",
-            "    jge .print_frac",
-            "    neg rax",
-            ".print_frac:",
-            "    call print_int",
-            "    pop rbx",
-            "    mov rsp, rbp",
-            "    pop rbp",
-            "    ret",
-            "",
-            "rt_concat_strings:",
-            "    push rbp",
-            "    mov rbp, rsp",
-            "    push rbx",
-            "    cmp rdi, 0",
-            "    jne .check_rsi",
-            "    lea rdi, [rel empty_str]",
-            ".check_rsi:",
-            "    cmp rsi, 0",
-            "    jne .do_concat",
-            "    lea rsi, [rel empty_str]",
-            ".do_concat:",
-            "    push rdi",
-            "    push rsi",
-            "    xor ebx, ebx",
-            ".len1:",
-            "    cmp byte [rdi + rbx], 0",
-            "    je .len1_done",
-            "    inc rbx",
-            "    jmp .len1",
-            ".len1_done:",
-            "    xor ecx, ecx",
-            ".len2:",
-            "    cmp byte [rsi + rcx], 0",
-            "    je .len2_done",
-            "    inc rcx",
-            "    jmp .len2",
-            ".len2_done:",
-            "    mov rax, rbx",
-            "    add rax, rcx",
-            "    inc rax",
-            "    push rax",
-            "    push rbx",
-            "    push rcx",
-            "    mov rdi, rax",
-            "    call alloc",
-            "    mov r8, rax",
-            "    pop rcx",
-            "    pop rbx",
-            "    pop rax",
-            "    pop rsi",
-            "    pop rdi",
-            "    xor r9d, r9d",
-            ".copy1:",
-            "    cmp r9, rbx",
-            "    je .copy1_done",
-            "    mov dl, byte [rdi + r9]",
-            "    mov byte [r8 + r9], dl",
-            "    inc r9",
-            "    jmp .copy1",
-            ".copy1_done:",
-            "    xor r10d, r10d",
-            "    lea r11, [r8 + rbx]",
-            ".copy2:",
-            "    cmp r10, rcx",
-            "    je .copy2_done",
-            "    mov dl, byte [rsi + r10]",
-            "    mov byte [r11 + r10], dl",
-            "    inc r10",
-            "    jmp .copy2",
-            ".copy2_done:",
-            "    mov byte [r11 + rcx], 0",
-            "    mov rax, r8",
-            "    pop rbx",
-            "    mov rsp, rbp",
-            "    pop rbp",
-            "    ret",
-            "",
-            "rt_compare_strings:",
-            "    push rbp",
-            "    mov rbp, rsp",
-            "    push rbx",
-            "    test rdi, rdi",
-            "    je .cmp_rdi_null",
-            "    test rsi, rsi",
-            "    je .cmp_rsi_null",
-            "    xor ecx, ecx",
-            ".cmp_loop:",
-            "    mov al, byte [rdi + rcx]",
-            "    mov bl, byte [rsi + rcx]",
-            "    cmp al, bl",
-            "    jne .cmp_diff",
-            "    cmp al, 0",
-            "    je .cmp_equal",
-            "    inc rcx",
-            "    jmp .cmp_loop",
-            ".cmp_diff:",
-            "    ja .cmp_greater",
-            "    mov rax, -1",
-            "    jmp .cmp_exit",
-            ".cmp_greater:",
-            "    mov rax, 1",
-            "    jmp .cmp_exit",
-            ".cmp_equal:",
-            "    xor eax, eax",
-            "    jmp .cmp_exit",
-            ".cmp_rdi_null:",
-            "    cmp rsi, 0",
-            "    je .cmp_equal",
-            "    mov rax, -1",
-            "    jmp .cmp_exit",
-            ".cmp_rsi_null:",
-            "    mov rax, 1",
-            ".cmp_exit:",
-            "    pop rbx",
-            "    mov rsp, rbp",
-            "    pop rbp",
-            "    ret",
-            "",
-            "rt_int_to_str:",
-            "    push rbp",
-            "    mov rbp, rsp",
-            "    push rbx",
-            "    mov rax, rdi",
-            "    mov edi, 32",
-            "    push rax",
-            "    call alloc",
-            "    pop rcx",
-            "    mov r8, rax",
-            "    test rcx, rcx",
-            "    jne .check_neg",
-            "    mov byte [r8], 48",
-            "    mov byte [r8+1], 0",
-            "    mov rax, r8",
-            "    pop rbx",
-            "    mov rsp, rbp",
-            "    pop rbp",
-            "    ret",
-            ".check_neg:",
-            "    xor r9d, r9d",
-            "    cmp rcx, 0",
-            "    jge .conv_setup",
-            "    neg rcx",
-            "    mov r9, 1",
-            ".conv_setup:",
-            "    mov rax, rcx",
-            "    mov rbx, 10",
-            "    xor r10d, r10d",
-            ".conv_loop:",
-            "    test rax, rax",
-            "    je .pop_dig",
-            "    xor edx, edx",
-            "    div rbx",
-            "    add rdx, 48",
-            "    push rdx",
-            "    inc r10",
-            "    jmp .conv_loop",
-            ".pop_dig:",
-            "    xor r11d, r11d",
-            "    cmp r9, 1",
-            "    jne .pop_loop",
-            "    mov byte [r8 + r11], 45",
-            "    inc r11",
-            ".pop_loop:",
-            "    cmp r10, 0",
-            "    je .done_str",
-            "    pop rdx",
-            "    mov byte [r8 + r11], dl",
-            "    inc r11",
-            "    dec r10",
-            "    jmp .pop_loop",
-            ".done_str:",
-            "    mov byte [r8 + r11], 0",
-            "    mov rax, r8",
-            "    pop rbx",
-            "    mov rsp, rbp",
-            "    pop rbp",
-            "    ret",
-            "",
-            "rt_bool_to_str:",
-            "    push rbp",
-            "    mov rbp, rsp",
-            "    test rdi, rdi",
-            "    jne .bool_true",
-            "    lea rax, [rel bool_false_msg]",
-            "    jmp .bool_exit",
-            ".bool_true:",
-            "    lea rax, [rel bool_true_msg]",
-            ".bool_exit:",
-            "    mov rsp, rbp",
-            "    pop rbp",
-            "    ret",
-            "rt_char_to_str:",
-            "    push rbp",
-            "    mov rbp, rsp",
-            "    push rbx",
-            "    mov rbx, rdi",
-            "    mov edi, 2",
-            "    call alloc",
-            "    mov byte [rax], bl",
-            "    mov byte [rax + 1], 0",
-            "    pop rbx",
-            "    mov rsp, rbp",
-            "    pop rbp",
-            "    ret",
-            "rt_read_input:",
-            "    push rbp",
-            "    mov rbp, rsp",
-            "    push rax",
-            "    xor edi, edi",
-            "    mov rsi, rax",
-            "    mov rdx, 3",
-            "    mov r10, 34",
-            "    mov r8, -1",
-            "    xor r9d, r9d",
-            "    mov eax, 9",
-            "    syscall",
-            "    mov rsi, rax",
-            "    push rsi",
-            "    xor edi, edi",
-            "    mov rdx, [rbp - 8]",
-            "    xor eax, eax",
-            "    syscall",
-            "    pop rsi",
-            "    test rax, rax",
-            "    jle .read_done",
-            "    mov byte [rsi + rax - 1], 0",
-            ".read_done:",
-            "    mov rax, rsi",
-            "    mov rsp, rbp",
-            "    pop rbp",
-            "    ret",
-            "rt_read_int:",
-            "    push rbp",
-            "    mov rbp, rsp",
-            "    push rbx",
-            "    sub rsp, 32",
-            "    xor eax, eax",
-            "    xor edi, edi",
-            "    lea rsi, [rbp - 40]",
-            "    mov rdx, 31",
-            "    syscall",
-            "    xor ecx, ecx",
-            "    xor ebx, ebx",
-            "    xor r8d, r8d",
-            "    cmp byte [rbp - 40], 45",
-            "    jne .atoi_loop",
-            "    mov r8, 1",
-            "    inc rcx",
-            ".atoi_loop:",
-            "    movzx rax, byte [rbp - 40 + rcx]",
-            "    cmp rax, 10",
-            "    je .atoi_done",
-            "    test rax, rax",
-            "    je .atoi_done",
-            "    cmp rax, 48",
-            "    jl .atoi_done",
-            "    cmp rax, 57",
-            "    jg .atoi_done",
-            "    sub rax, 48",
-            "    imul rbx, 10",
-            "    add rbx, rax",
-            "    inc rcx",
-            "    jmp .atoi_loop",
-            ".atoi_done:",
-            "    mov rax, rbx",
-            "    cmp r8, 1",
-            "    jne .read_int_exit",
-            "    neg rax",
-            ".read_int_exit:",
-            "    add rsp, 32",
-            "    pop rbx",
-            "    mov rsp, rbp",
-            "    pop rbp",
-            "    ret",
-            "rt_str_to_int:",
-            "    push rbp",
-            "    mov rbp, rsp",
-            "    push rbx",
-            "    xor ecx, ecx",
-            "    xor ebx, ebx",
-            "    xor r8d, r8d",
-            "    cmp byte [rdi], 45",
-            "    jne .parse_loop",
-            "    mov r8, 1",
-            "    inc rcx",
-            ".parse_loop:",
-            "    movzx rax, byte [rdi + rcx]",
-            "    test rax, rax",
-            "    je .parse_done",
-            "    cmp rax, 48",
-            "    jl .parse_error",
-            "    cmp rax, 57",
-            "    jg .parse_error",
-            "    sub rax, 48",
-            "    imul rbx, 10",
-            "    add rbx, rax",
-            "    inc rcx",
-            "    jmp .parse_loop",
-            ".parse_done:",
-            "    mov rax, rbx",
-            "    cmp r8, 1",
-            "    jne .parse_exit",
-            "    neg rax",
-            ".parse_exit:",
-            "    pop rbx",
-            "    mov rsp, rbp",
-            "    pop rbp",
-            "    ret",
-            ".parse_error:",
-            "    xor eax, eax",
-            "    pop rbx",
-            "    mov rsp, rbp",
-            "    pop rbp",
-            "    ret",
-            "rt_int_pow:",
-            "    push rbp",
-            "    mov rbp, rsp",
-            "    mov rcx, rsi",
-            "    mov rax, 1",
-            "    test rcx, rcx",
-            "    jle .pow_done",
-            ".pow_loop:",
-            "    imul rax, rdi",
-            "    dec rcx",
-            "    jnz .pow_loop",
-            ".pow_done:",
-            "    mov rsp, rbp",
-            "    pop rbp",
-            "    ret",
-            "",
-            "rt_float_pow:",
-            "    push rbp",
-            "    mov rbp, rsp",
-            "    sub rsp, 16",
-            "    movsd [rsp], xmm0",
-            "    movsd [rsp+8], xmm1",
-            "    fld qword [rsp+8]",
-            "    fld qword [rsp]",
-            "    fyl2x",
-            "    fld st0",
-            "    frndint",
-            "    fsub st1, st0",
-            "    fxch st1",
-            "    f2xm1",
-            "    fld1",
-            "    faddp st1, st0",
-            "    fscale",
-            "    fstp st1",
-            "    fstp qword [rsp]",
-            "    movsd xmm0, [rsp]",
-            "    add rsp, 16",
-            "    mov rsp, rbp",
-            "    pop rbp",
-            "    ret",
-            "",
-            "rt_alloc:",
-            "    push rbp",
-            "    mov rbp, rsp",
-            "    add rdi, 8",
-            "    push rdi",
-            "    mov rsi, rdi",
-            "    xor edi, edi",
-            "    mov rdx, 3",
-            "    mov r10, 34",
-            "    mov r8, -1",
-            "    xor r9d, r9d",
-            "    mov eax, 9",
-            "    syscall",
-            "    test rax, rax",
-            "    js .alloc_failed",
-            "    push rax",
-            "    mov rdi, rax",
-            "    mov rcx, [rbp -8]",
-            "    xor al, al",
-            "    rep stosb",
-            "    pop rax",
-            "    mov rcx, [rbp - 8]",
-            "    sub rcx, 8",
-            "    mov qword [rax], rcx",
-            "    add rax, 8",
-            "    mov rsp, rbp",
-            "    pop rbp",
-            "    ret",
-            ".alloc_failed:",
-            "    pop rdi",
-            "    xor eax, eax",
-            "    mov rsp, rbp",
-            "    pop rbp",
-            "    ret",
-            "",
-            "rt_str_ndup:",
-            "    push rbp",
-            "    mov rbp, rsp",
-            "    push rdi",
-            "    push rsi",
-            "    mov rdi, rsi",
-            "    call alloc",
-            "    pop rsi",
-            "    pop rdi",
-            "    xor ecx, ecx",
-            ".ndup_copy_loop:",
-            "    cmp rcx, rsi",
-            "    je .ndup_copy_done",
-            "    mov dl, byte [rdi + rcx]",
-            "    mov byte [rax + rcx], dl",
-            "    inc rcx",
-            "    jmp .ndup_copy_loop",
-            ".ndup_copy_done:",
-            "    mov byte, [rax + rsi], 0", #Null Terminator
-            "    mov rsp, rbp",
-            "    pop rbp",
-            "    ret",
-            "",
-            "rt_free:",
-            "    push rbp",
-            "    mov rbp, rsp",
-            "    test rdi, rdi",
-            "    jz .free_done",
-            "    sub rdi, 8",
-            "    mov rsi, qword [rdi]",
-            "    add rsi, 8",
-            "    mov rax, 11",
-            "    syscall",
-            ".free_done:",
-            "    mov rsp, rbp",
-            "    pop rbp",
-            "    ret",
-            "",
-            "rt_set_mem:",
-            "    push rbp",
-            "    mov rbp, rsp",
-            "    mov qword [rdi + rsi], rdx",
-            "    mov rsp, rbp",
-            "    pop rbp",
-            "    ret",
-            "",
-            "rt_get_mem:",
-            "    push rbp",
-            "    mov rbp, rsp",
-            "    mov rax, qword [rdi + rsi]",
-            "    mov rsp, rbp",
-            "    pop rbp",
-            "    ret",
-            "",
-            "rt_get_mem32:",
-            "    push rbp",
-            "    mov rbp, rsp",
-            "    movsxd rax, dword [rdi + rsi]",
-            "    mov rsp, rbp",
-            "    pop rbp",
-            "    ret",
-            "",
-            "rt_get_len:",
-            "    push rbp",
-            "    mov rbp, rsp",
-            "    sub rdi, 8",
-            "    mov rax, qword [rdi]",
-            "    shr rax, 3",
-            "    mov rsp, rbp",
-            "    pop rbp",
-            "    ret",
-            "",
-            "rt_realloc_mem:",
-            "    push rbp",
-            "    mov rbp, rsp",
-            "    sub rdi, 8",
-            "    mov rcx, qword [rdi]",
-            "    add rcx, 8",
-            "    mov rdx, rsi",
-            "    add rdx, 8",
-            "    mov rsi, rcx",
-            "    mov r10, 1",
-            "    mov rax, 25",
-            "    syscall",
-            "    sub rdx, 8",
-            "    mov qword [rax], rdx",
-            "    add rax, 8",
-            "    mov rsp, rbp",
-            "    pop rbp",
-            "    ret",
-            "",
-            "rt_exit_prog:",
-            "    push rbp",
-            "    mov rbp, rsp",
-            "    mov eax, 60",
-            "    syscall" 
-            ]
-
-        start_section = [
-            "",
-            "_start:",
-            "    mov rax, qword [rsp]",
-            "    mov qword [rel global_argc], rax",
-            "    lea rax, [rsp + 8]",
-            "    mov qword [rel global_argv], rax",
-            "    push rbp",
-            "    mov rbp, rsp",
-            "    mov rdi, 11",
-            "    lea rsi, [rel sigaction_struct]",
-            "    mov rdx, 0",
-            "    mov r10, 8",
-            "    mov rax, 13",
-            "    syscall"
-        ]
-        
-        footer = [
-            "",
-            "    mov rsp, rbp",
-            "    pop rbp",
-            "    ; Program Exit (Syscall 60)",
-            "    mov eax, 60",
-            "    xor edi, edi",
-            "    syscall"
-        ]
-
-        return "\n".join(data_code + header + self.functions_code + start_section + self.assembly + footer)
-        
     def get_new_label(self, base_name):
         self.label_count += 1
         return f"{base_name}_{self.label_count}"
@@ -1037,7 +369,8 @@ class CodeGen:
             return op_type in ('str', 'string') and node.op_tok[1] == '+'
 
         if ntype == 'CastNode':
-            return node.type_tok[1] in ('str', 'string')
+            src_type = getattr(node.node, 'eval_type', None) or self._get_obj_type(node.node)
+            return node.type_tok[1] in ('str', 'string') and src_type not in ('bool', 'boolean')
 
         if ntype == 'FuncCallNode':
             ret_type = self._get_obj_type(node)
@@ -1050,14 +383,14 @@ class CodeGen:
         if expr_type in ('str', 'string'):
             return
         elif expr_type in ('bool', 'boolean'):
-            self.assembly.append("    mov rdi, rax")
-            self.assembly.append("    call rt_bool_to_str")
-        elif expr_type in ('char'):
-            self.assembly.append("    mov rdi, rax")
-            self.assembly.append("    call rt_char_to_str")
+            self.emit.mov("rdi", "rax")
+            self.emit.call_rt("rt_bool_to_str")
+        elif expr_type == 'char':
+            self.emit.mov("rdi", "rax")
+            self.emit.call_rt("rt_char_to_str")
         else:
-            self.assembly.append("    mov rdi, rax")
-            self.assembly.append("    call rt_int_to_str")
+            self.emit.mov("rdi", "rax")
+            self.emit.call_rt("rt_int_to_str")
        
     def enter_scope(self):
         """Creates a new local scope when a new { is opened."""
@@ -1152,16 +485,17 @@ class CodeGen:
         }
 
     def visit_NumberNode(self, node):
-        """When visiting a number places it in the RAX register."""
-        
+        """Places a numeric literal into RAX."""
         if node.tok[0] == 'FLOAT':
-            self.assembly.append(f"    mov rax, __float64__({node.tok[1]})")       
+            self.emit.mov("rax", f"__float64__({node.tok[1]})")      
         else:    
             num = int(node.tok[1], 0)
-            if 0 <= num <= 2147483647:
-                self.assembly.append(f"    mov eax, {node.tok[1]}")
+            if num == 0:
+                self.emit.mov("rax", 0)
+            elif 0 < num <= 2147483647:
+                self.emit.mov("eax", node.tok[1])
             else:
-                self.assembly.append(f"    mov rax, {node.tok[1]}")
+                self.emit.mov("rax", node.tok[1])
 
     def visit_IfNode(self, node):
         """Turns if, butif and else cases to JMPs."""
@@ -1171,20 +505,18 @@ class CodeGen:
         for condition, block in node.cases:
             next_case_label = self.get_new_label("NEXT_CASE")
             self.stack_offset = initial_offset
-            
+
             self.generate_branch(condition, next_case_label)
             self.generate(block)
-            self.assembly.append(f"    jmp {end_label}")
-            self.assembly.append(f"{next_case_label}:")
+            self.emit.jmp(end_label)
+            self.emit.label(next_case_label)
 
-        #Else Case
         if node.else_case:
             self.stack_offset = initial_offset
             self.generate(node.else_case)
 
-        # Public label all cases end at
         self.stack_offset = initial_offset
-        self.assembly.append(f"{end_label}:")
+        self.emit.label(end_label)
 
     def visit_WhileNode(self, node):
         """While loop."""
@@ -1192,101 +524,75 @@ class CodeGen:
         end_label = self.get_new_label("WHILE_END")
 
         self.loop_stack.append((start_label, end_label))
-        self.assembly.append(f"{start_label}:")
+        self.emit.label(start_label)
 
         self.generate_branch(node.condition_node, end_label)
-
-        self.generate(node.body_node)        
-        self.assembly.append(f"    jmp {start_label}")
-        self.assembly.append(f"{end_label}:")
+        self.generate(node.body_node)
+        self.emit.jmp(start_label)
+        self.emit.label(end_label)
 
         self.loop_stack.pop()
 
     def visit_ForNode(self, node):
         var_name = node.var_name_tok[1]
-        
+
         self.enter_scope()
         current_env = self.environments[-1]
 
-        # 1. Allocates space on the stack for hidden variables.
+        # Single 32-byte allocation for ptr, len, idx, and loop variable
+        self.emit.sub("rsp", 32)
         self.stack_offset += 8
         ptr_offset = self.stack_offset
-        self.assembly.append("    sub rsp, 8")
-
         self.stack_offset += 8
         len_offset = self.stack_offset
-        self.assembly.append("    sub rsp, 8")
-
         self.stack_offset += 8
         idx_offset = self.stack_offset
-        self.assembly.append("    sub rsp, 8")
-
-        # 2. The actual loop variable used by the programmer.
         self.stack_offset += 8
         current_env[var_name] = self.stack_offset
         elem_offset = self.stack_offset
-        self.assembly.append("    sub rsp, 8")
 
-        # 3. Calculates the Array and saves the pointer.
         self.generate(node.iter_node)
-        self.assembly.append(f"    mov qword [rbp - {ptr_offset}], rax")
+        self.emit.mov(f"qword [rbp - {ptr_offset}]", "rax")
 
-        # 4. Finds the Array length and saves.
-        self.assembly.append("    mov rdi, rax")
-        self.assembly.append("    call rt_get_len")
-        self.assembly.append(f"    mov qword [rbp - {len_offset}], rax")
+        self.emit.mov("rdi", "rax")
+        self.emit.call_rt("rt_get_len")
+        self.emit.mov(f"qword [rbp - {len_offset}]", "rax")
+        self.emit.mov(f"qword [rbp - {idx_offset}]", 0)
 
-        # 5. Starts Index from 0
-        self.assembly.append(f"    mov qword [rbp - {idx_offset}], 0")
-
-        # LOOP START
         start_label = self.get_new_label("FOR_START")
         inc_label = self.get_new_label("FOR_INC")
         end_label = self.get_new_label("FOR_END")
 
         self.loop_stack.append((inc_label, end_label))
+        self.emit.label(start_label)
 
-        self.assembly.append(f"{start_label}:")
+        self.emit.mov("rax", f"qword [rbp - {idx_offset}]")
+        self.emit.cmp("rax", f"qword [rbp - {len_offset}]")
+        self.emit.jcc("ge", end_label)
 
-        # 6. Condition Check
-        self.assembly.append(f"    mov rax, qword [rbp - {idx_offset}]")
-        self.assembly.append(f"    mov rbx, qword [rbp - {len_offset}]")
-        self.assembly.append("    cmp rax, rbx")
-        self.assembly.append(f"    jge {end_label}")
+        self.emit.mov("rbx", f"qword [rbp - {idx_offset}]")
+        self.emit.mov("rax", f"qword [rbp - {ptr_offset}]")
+        self.emit.mov("rcx", "qword [rax + rbx*8]")
+        self.emit.mov(f"qword [rbp - {elem_offset}]", "rcx")
 
-        # 7. Pulls the element from the array and assign it to a variable.
-        self.assembly.append(f"    mov rbx, qword [rbp - {idx_offset}]")
-        self.assembly.append("    shl rbx, 3") # Index*8
-        self.assembly.append(f"    mov rax, qword [rbp - {ptr_offset}]")
-        self.assembly.append("    mov rcx, qword [rax + rbx]")
-        self.assembly.append(f"    mov qword [rbp - {elem_offset}], rcx")
-
-        # 8. Executes code body
         self.generate(node.body)
 
-        # 9. Increases Index by 1 and jumps back to beginning.
-        self.assembly.append(f"{inc_label}:")
-        self.assembly.append(f"    mov rax, qword [rbp - {idx_offset}]")
-        self.assembly.append("    inc rax")
-        self.assembly.append(f"    mov qword [rbp - {idx_offset}], rax")
-        self.assembly.append(f"    jmp {start_label}")
+        self.emit.label(inc_label)
+        self.emit.inst("inc", f"qword [rbp - {idx_offset}]")
+        self.emit.jmp(start_label)
 
-        # LOOP END
-        self.assembly.append(f"{end_label}:")
-
+        self.emit.label(end_label)
         self.loop_stack.pop()
         self.exit_scope()
 
     def visit_ReAssignNode(self, node):
-        """Updates the existing variable."""
+        """Updates an existing variable."""
         var_name = node.var_name_tok[1]
-
-        loc = getattr(self, 'get_var_loc', lambda x: f"qword [rbp - {self.get_var_offset(x)}]")(var_name)
+        loc = self.get_var_loc(var_name)
         if not loc or "None" in loc:
             raise RuntimeError(f"{var_name} is not found.")
 
         self.generate(node.value_node)
-
         op = node.op_tok[1]
 
         var_type = self.get_var_type(var_name)
@@ -1295,72 +601,66 @@ class CodeGen:
         if var_type in ('str', 'string') or val_type in ('str', 'string'):
             if op in ('+=', '=+'):
                 self._emit_str_coercion(val_type)
-                self.assembly.append("    push rax")     
-                self.assembly.append(f"    mov rax, {loc}")
+                self.emit.push("rax")
+                self.emit.mov("rax", loc)
                 self._emit_str_coercion(var_type)
-                self.assembly.append("    mov rdi, rax") 
-                self.assembly.append("    pop rsi")      
-                self.assembly.append("    call rt_concat_strings")
-                self.assembly.append(f"    mov {loc}, rax")
+                self.emit.mov("rdi", "rax")
+                self.emit.pop("rsi")
+                self.emit.call_rt("rt_concat_strings")
+                self.emit.mov(loc, "rax")
                 return
-            elif op in ('='):
-                self.assembly.append(f"    mov {loc}, rax")
+            elif op == '=':
+                self.emit.mov(loc, "rax")
                 return
             else:
                 raise Exception("Semantic Error: unsupported operation type on string value")
 
         if var_type in ('double', 'float') or val_type in ('double', 'float'):
-            self.assembly.append("    movq xmm1, rax")        
-            self.assembly.append(f"    mov rax, {loc}")       
-            self.assembly.append("    movq xmm0, rax")
-
+            self.emit.inst("movq", "xmm1", "rax")
             if op == '=':
-                self.assembly.append(f"    movq {loc}, xmm1")
-            elif op in ('+=', '=+'):
-                self.assembly.append("    addsd xmm0, xmm1")
-                self.assembly.append("    movq rax, xmm0")
-                self.assembly.append(f"    mov {loc}, rax")
+                self.emit.inst("movq", loc, "xmm1")
+                return
+            self.emit.mov("rax", loc)
+            self.emit.inst("movq", "xmm0", "rax")
+
+            if op in ('+=', '=+'):
+                self.emit.inst("addsd", "xmm0", "xmm1")
             elif op in ('-=', '=-'):
-                self.assembly.append("    subsd xmm0, xmm1")
-                self.assembly.append("    movq rax, xmm0")
-                self.assembly.append(f"    mov {loc}, rax")
+                self.emit.inst("subsd", "xmm0", "xmm1")
             elif op in ('*=', '=*'):
-                self.assembly.append("    mulsd xmm0, xmm1")
-                self.assembly.append("    movq rax, xmm0")
-                self.assembly.append(f"    mov {loc}, rax")
+                self.emit.inst("mulsd", "xmm0", "xmm1")
             elif op in ('/=', '=/'):
-                self.assembly.append("    divsd xmm0, xmm1")
-                self.assembly.append("    movq rax, xmm0")
-                self.assembly.append(f"    mov {loc}, rax")
+                self.emit.inst("divsd", "xmm0", "xmm1")
+            self.emit.inst("movq", "rax", "xmm0")
+            self.emit.mov(loc, "rax")
             return
-    
+
         if op == '=':
-            self.assembly.append(f"    mov {loc}, rax")
+            self.emit.mov(loc, "rax")
         elif op in ('+=', '=+'):
-            self.assembly.append(f"    add {loc}, rax")
+            self.emit.add(loc, "rax")
         elif op in ('-=', '=-'):
-            self.assembly.append(f"    sub {loc}, rax")
+            self.emit.sub(loc, "rax")
         elif op in ('*=', '=*'):
-            self.assembly.append(f"    mov rbx, {loc}")
-            self.assembly.append("    imul rax, rbx")
-            self.assembly.append(f"    mov {loc}, rax")
-        elif op in ('/=','=/'):
-            self.assembly.append("    mov rbx, rax")
-            self.assembly.append(f"    mov rax, {loc}")
-            self.assembly.append("    cqo")
-            self.assembly.append("    idiv rbx")
-            self.assembly.append(f"    mov {loc}, rax")
+            self.emit.inst("imul", "rax", loc)
+            self.emit.mov(loc, "rax")
+        elif op in ('/=', '=/'):
+            self.emit.mov("rbx", "rax")
+            self.emit.mov("rax", loc)
+            self.emit.inst("cqo")
+            self.emit.inst("idiv", "rbx")
+            self.emit.mov(loc, "rax")
         elif op in ('%=', '=%'):
-            self.assembly.append("    mov rbx, rax")
-            self.assembly.append(f"    mov rax, {loc}")
-            self.assembly.append("    cqo")
-            self.assembly.append("    idiv rbx")
-            self.assembly.append(f"    mov {loc}, rdx") 
+            self.emit.mov("rbx", "rax")
+            self.emit.mov("rax", loc)
+            self.emit.inst("cqo")
+            self.emit.inst("idiv", "rbx")
+            self.emit.mov(loc, "rdx")
         elif op in ('^=', '=^'):
-            self.assembly.append("    mov rsi, rax")
-            self.assembly.append(f"    mov rdi, {loc}")
-            self.assembly.append("    call rt_int_pow")
-            self.assembly.append(f"    mov {loc}, rax")
+            self.emit.mov("rsi", "rax")
+            self.emit.mov("rdi", loc)
+            self.emit.call_rt("rt_int_pow")
+            self.emit.mov(loc, "rax")
 
     def visit_AttemptNode(self, node):
         attempt_start = self.get_new_label("ATTEMPT_START")
@@ -1369,119 +669,110 @@ class CodeGen:
         end_label = self.get_new_label("ATTEMPT_END")
         old_stack = self.stack_offset
 
+        self.emit.sub("rsp", 32)
         self.stack_offset += 8
         off_old_frame = self.stack_offset
-        self.assembly.append("    sub rsp, 8")
-
         self.stack_offset += 8
         off_ex_lbl = self.stack_offset
-        self.assembly.append("    sub rsp, 8")
-
         self.stack_offset += 8
         off_old_rbp = self.stack_offset
-        self.assembly.append("    sub rsp, 8")
-
         self.stack_offset += 8
         off_old_rsp = self.stack_offset
-        self.assembly.append("    sub rsp, 8")
 
-        self.assembly.append("    mov rax, qword [rel global_err_frame]")
-        self.assembly.append(f"    mov qword [rbp - {off_old_frame}], rax")
-        self.assembly.append(f"    lea rax, [rel {exclude_label}]")
-        self.assembly.append(f"    mov qword [rbp - {off_ex_lbl}], rax")               
-        self.assembly.append(f"    mov qword [rbp - {off_old_rbp}], rbp")                             
-        self.assembly.append("    mov rax, rsp")
-        self.assembly.append("    add rax, 32")                          
-        self.assembly.append("    push rax")
-        self.assembly.append(f"    mov qword [rbp - {off_old_rsp}], rax")
+        self.emit.mov("rax", "qword [rel global_err_frame]")
+        self.emit.mov(f"qword [rbp - {off_old_frame}]", "rax")
+        self.emit.lea("rax", f"[rel {exclude_label}]")
+        self.emit.mov(f"qword [rbp - {off_ex_lbl}]", "rax")
+        self.emit.mov(f"qword [rbp - {off_old_rbp}]", "rbp")
+        self.emit.lea("rax", "[rsp + 32]")
+        self.emit.mov(f"qword [rbp - {off_old_rsp}]", "rax")
 
-        self.assembly.append(f"    lea rax, [rbp - {off_old_rsp}]")
-        self.assembly.append("    mov qword [rel global_err_frame], rax")
+        self.emit.lea("rax", f"[rbp - {off_old_rsp}]")
+        self.emit.mov("qword [rel global_err_frame]", "rax")
 
-        self.assembly.append(f"{attempt_start}:")
+        self.emit.label(attempt_start)
         self.generate(node.attempt_body)
 
-        self.assembly.append(f"    mov rax, qword [rbp - {off_old_frame}]")
-        self.assembly.append("    mov qword [rel global_err_frame], rax")
-        self.assembly.append(f"    jmp {final_label}")
+        self.emit.mov("rax", f"qword [rbp - {off_old_frame}]")
+        self.emit.mov("qword [rel global_err_frame]", "rax")
+        self.emit.jmp(final_label)
 
-        self.assembly.append(f"{exclude_label}:")
-        self.assembly.append("    mov rsp, rbp")
-        self.assembly.append("    sub rsp, 64")
+        self.emit.label(exclude_label)
+        self.emit.mov("rsp", "rbp")
+        self.emit.sub("rsp", 64)
 
         self.stack_offset = old_stack
         if node.exclude_body:
             self.enter_scope()
             self.stack_offset = 32
             self.environments[-1]['err'] = self.stack_offset
-            self.assembly.append(f"    mov qword [rbp - {self.stack_offset}], rax")
-            
+            self.emit.mov(f"qword [rbp - {self.stack_offset}]", "rax")
+
             self.generate(node.exclude_body)
             self.exit_scope()
-
         else:
-            self.assembly.append("    push rax") # Saves the error if no Exclude
+            self.emit.push("rax")
             if node.final_body:
                 self.generate(node.final_body)
-            self.assembly.append("    pop rax")
-            
-            self.assembly.append("    mov rbx, qword [rel global_err_frame]")
-            self.assembly.append("    cmp rbx, 0")
-            self.assembly.append(f"    je {end_label}_crash")
-            self.assembly.append("    mov rcx, qword [rbx + 24]")
-            self.assembly.append("    mov qword [rel global_err_frame], rcx")
-            self.assembly.append("    mov rdx, qword [rbx + 16]")
-            self.assembly.append("    mov rbp, qword [rbx + 8]")
-            self.assembly.append("    mov rsp, qword [rbx]")
-            self.assembly.append("    jmp rdx")
-            
-            self.assembly.append(f"{end_label}_crash:")
-            self.assembly.append("    mov rdi, rax")
-            self.assembly.append("    mov eax, 60")
-            self.assembly.append("    syscall")
-            self.assembly.append(f"    jmp {end_label}")
+            self.emit.pop("rax")
 
-        self.assembly.append(f"{final_label}:")
+            self.emit.mov("rbx", "qword [rel global_err_frame]")
+            self.emit.cmp("rbx", 0)
+            self.emit.jcc("e", f"{end_label}_crash")
+            self.emit.mov("rcx", "qword [rbx + 24]")
+            self.emit.mov("qword [rel global_err_frame]", "rcx")
+            self.emit.mov("rdx", "qword [rbx + 16]")
+            self.emit.mov("rbp", "qword [rbx + 8]")
+            self.emit.mov("rsp", "qword [rbx]")
+            self.emit.jmp("rdx")
+
+            self.emit.label(f"{end_label}_crash")
+            self.emit.mov("rdi", "rax")
+            self.emit.mov("eax", 60)
+            self.emit.syscall()
+            self.emit.jmp(end_label)
+
+        self.emit.label(final_label)
         if node.final_body:
             self.generate(node.final_body)
 
-        self.assembly.append(f"{end_label}:")
+        self.emit.label(end_label)
 
     def visit_TriggerNode(self, node):
         self.generate(node.err_value_node)
-
-        self.assembly.append("    mov rbx, qword [rel global_err_frame]")
-        self.assembly.append("    cmp rbx, 0")
         crash_label = self.get_new_label("CRASH")
-        self.assembly.append(f"    je {crash_label}")
 
-        self.assembly.append("    mov rcx, qword [rbx + 24]")
-        self.assembly.append("    mov qword [rel global_err_frame], rcx")
-        self.assembly.append("    mov rdx, qword [rbx + 16]") # Exclude Address
-        self.assembly.append("    mov rbp, qword [rbx + 8]")  # Old RBP
-        self.assembly.append("    mov rsp, qword [rbx]")      # Old RSP
-        self.assembly.append("    jmp rdx")
+        self.emit.mov("rbx", "qword [rel global_err_frame]")
+        self.emit.cmp("rbx", 0)
+        self.emit.jcc("e", crash_label)
 
-        self.assembly.append(f"{crash_label}:")
-        self.assembly.append("    mov rdi, rax") # RDI = Exit/Error Code
-        self.assembly.append("    mov eax, 60")  # sys_exit
-        self.assembly.append("    syscall")
+        self.emit.mov("rcx", "qword [rbx + 24]")
+        self.emit.mov("qword [rel global_err_frame]", "rcx")
+        self.emit.mov("rdx", "qword [rbx + 16]")
+        self.emit.mov("rbp", "qword [rbx + 8]")
+        self.emit.mov("rsp", "qword [rbx]")
+        self.emit.jmp("rdx")
+
+        self.emit.label(crash_label)
+        self.emit.mov("rdi", "rax")
+        self.emit.mov("eax", 60)
+        self.emit.syscall()
 
     def visit_VarAssignNode(self, node):
         var_name = node.var_name_tok[1]
-        
+
         self.generate(node.value_node)
         current_env = self.environments[-1]
 
         if var_name not in current_env:
             if len(self.environments) == 1:
                 label = f"gvar_{var_name}"
-                self.data_section.append(f"    {label} dq 0")
+                self.emit.emit_data(f"{label} dq 0")
                 current_env[var_name] = label
             else:
                 self.stack_offset += 8
                 current_env[var_name] = self.stack_offset
-                self.assembly.append("    sub rsp, 8")
+                self.emit.sub("rsp", 8)
 
         declared_type = node.type_tok[1] if hasattr(node, 'type_tok') and node.type_tok else None
         inferred_type = self._get_obj_type(node.value_node)
@@ -1491,7 +782,7 @@ class CodeGen:
             self.type_environments[-1][var_name] = var_type
 
         loc = self.get_var_loc(var_name)
-        self.assembly.append(f"    mov {loc}, rax")
+        self.emit.mov(loc, "rax")
 
     def visit_VarAccessNode(self, node):
         """Reads the variable value from RAM."""
@@ -1499,198 +790,185 @@ class CodeGen:
         loc = self.get_var_loc(var_name)
         if loc is None:
             if (self.semantic_analyzer and hasattr(self.semantic_analyzer, 'functions') and var_name in self.semantic_analyzer.functions) or var_name in self.function_return_types:
-                self.assembly.append(f"    lea rax, [rel fn_{var_name}]")
+                self.emit.lea("rax", f"[rel fn_{var_name}]")
                 return
             raise RuntimeError(f"{var_name} is not found.")
-        self.assembly.append(f"    mov rax, {loc}")
+        self.emit.mov("rax", loc)
 
     def visit_BinOpNode(self, node):    
         """Reduces mathematics, comparison, and string operations to assembly language."""
-        self.generate(node.right_node)
-        
-        op_type = getattr(node, 'operand_type', getattr(node.left_node, 'eval_type', 'int')) 
+        op_type = getattr(node, 'operand_type', getattr(node.left_node, 'eval_type', 'int'))
         left_type = getattr(node.left_node, 'eval_type', None) or self._get_obj_type(node.left_node) or 'int'
         right_type = getattr(node.right_node, 'eval_type', None) or self._get_obj_type(node.right_node) or 'int'
+        op = node.op_tok[1]
 
         if op_type in ('str', 'string') or left_type in ('str', 'string') or right_type in ('str', 'string'):
-            # --- STRING ---
-            op = node.op_tok[1]
+            self.generate(node.right_node)
             if op == '+':
-                left_is_temp = self._is_temp_string(node.left_node)
-                right_is_temp = self._is_temp_string(node.right_node)
+                left_is_temp = self._is_temp_string(node.left_node) or (left_type not in ('str', 'string', 'bool', 'boolean'))
+                right_is_temp = self._is_temp_string(node.right_node) or (right_type not in ('str', 'string', 'bool', 'boolean'))
 
                 self._emit_str_coercion(right_type)
-                self.assembly.append("    push rax")
+                self.emit.push("rax")
                 self.generate(node.left_node)
                 self._emit_str_coercion(left_type)
-                self.assembly.append("    mov rdi, rax")
-                self.assembly.append("    pop rsi")
-                self.assembly.append("    push rax")
+                self.emit.push("rax")
 
-                self.assembly.append("    mov rdi, qword [rsp]")
-                self.assembly.append("    mov rsi, qword [rsp + 8]")
-                self.assembly.append("    call rt_concat_strings")
+                self.emit.mov("rdi", "qword [rsp]")
+                self.emit.mov("rsi", "qword [rsp + 8]")
+                self.emit.call_rt("rt_concat_strings")
 
                 if left_is_temp or right_is_temp:
-                    self.assembly.append("    push rax")
-
+                    self.emit.push("rax")
                     if left_is_temp:
-                        self.assembly.append("    mov rdi, qword [rsp + 8]")
-                        self.assembly.append("    call rt_free")
-
+                        self.emit.mov("rdi", "qword [rsp + 8]")
+                        self.emit.call_rt("rt_free")
                     if right_is_temp:
-                        self.assembly.append("    mov rdi, qword [rsp + 16]")
-                        self.assembly.append("    call rt_free")
+                        self.emit.mov("rdi", "qword [rsp + 16]")
+                        self.emit.call_rt("rt_free")
+                    self.emit.pop("rax")
 
-                    self.assembly.append("    pop rax") # Restore result RAX
-
-                self.assembly.append("    add rsp, 16") # Clean left & right ptrs from stack
+                self.emit.add("rsp", 16)
             elif op in ('=?', '?=', '!=', '=!', '>', '<', '>=', '=>', '<=', '=<', 'is', 'same'):
-                self.assembly.append("    push rax")
+                self.emit.push("rax")
                 self.generate(node.left_node)
-                self.assembly.append("    mov rdi, rax")
-                self.assembly.append("    pop rsi")
-                self.assembly.append("    call rt_compare_strings")
-                self.assembly.append("    test rax, rax")
+                self.emit.mov("rdi", "rax")
+                self.emit.pop("rsi")
+                self.emit.call_rt("rt_compare_strings")
+                self.emit.cmp("rax", 0)
 
-                if op in ('=?', '?=', 'is', 'same'): self.assembly.append("    sete al") 
-                elif op in ('!=', '=!'): self.assembly.append("    setne al") 
-                elif op == '>': self.assembly.append("    setg al") 
-                elif op == '<': self.assembly.append("    setl al") 
-                elif op in ('>=', '=>'): self.assembly.append("    setge al") 
-                elif op in ('<=', '=<'): self.assembly.append("    setle al") 
-                self.assembly.append("    movzx rax, al")
+                if op in ('=?', '?=', 'is', 'same'):   self.emit.inst("sete", "al")
+                elif op in ('!=', '=!'):              self.emit.inst("setne", "al")
+                elif op == '>':                       self.emit.inst("setg", "al")
+                elif op == '<':                       self.emit.inst("setl", "al")
+                elif op in ('>=', '=>'):              self.emit.inst("setge", "al")
+                elif op in ('<=', '=<'):              self.emit.inst("setle", "al")
+                self.emit.inst("movzx", "rax", "al")
             else:
                 raise Exception("Semantic Error: Unsupported operation between strings.")
-                
+
         elif op_type == 'double':
-            # --- FLOATING POINT NUMBERS ---
-            self.assembly.append("    push rax")
-
+            self.generate(node.right_node)
+            self.emit.push("rax")
             self.generate(node.left_node)
 
-            self.assembly.append("    movq xmm0, rax")
-            self.assembly.append("    movq xmm1, [rsp]")
-            self.assembly.append("    add rsp, 8") 
-            
-            op = node.op_tok[1]
+            self.emit.inst("movq", "xmm0", "rax")
+            self.emit.inst("movq", "xmm1", "[rsp]")
+            self.emit.add("rsp", 8)
+
             if op == '+':
-                self.assembly.append("    addsd xmm0, xmm1")
-                self.assembly.append("    movq rax, xmm0")
+                self.emit.inst("addsd", "xmm0", "xmm1")
+                self.emit.inst("movq", "rax", "xmm0")
             elif op == '-':
-                self.assembly.append("    subsd xmm0, xmm1")
-                self.assembly.append("    movq rax, xmm0")
+                self.emit.inst("subsd", "xmm0", "xmm1")
+                self.emit.inst("movq", "rax", "xmm0")
             elif op == '*':
-                self.assembly.append("    mulsd xmm0, xmm1")
-                self.assembly.append("    movq rax, xmm0")
+                self.emit.inst("mulsd", "xmm0", "xmm1")
+                self.emit.inst("movq", "rax", "xmm0")
             elif op == '/':
-                self.assembly.append("    divsd xmm0, xmm1")
-                self.assembly.append("    movq rax, xmm0")
+                self.emit.inst("divsd", "xmm0", "xmm1")
+                self.emit.inst("movq", "rax", "xmm0")
             elif op == '%':
-                self.assembly.append("    sub rsp, 16")
-                self.assembly.append("    movsd [rsp], xmm1")
-                self.assembly.append("    fld qword [rsp]")     
-                self.assembly.append("    movsd [rsp], xmm0")
-                self.assembly.append("    fld qword [rsp]")     
-                fprem_loop = self.get_new_label("FPREM_LOOP")
-                self.assembly.append(f"{fprem_loop}:")
-                self.assembly.append("    fprem")               
-                self.assembly.append("    fnstsw ax")
-                self.assembly.append("    test ah, 4")          
-                self.assembly.append(f"    jnz {fprem_loop}")
-                self.assembly.append("    fstp qword [rsp]")    
-                self.assembly.append("    movsd xmm0, [rsp]")   
-                self.assembly.append("    fstp st0")            
-                self.assembly.append("    add rsp, 16")
-                self.assembly.append("    movq rax, xmm0")
+                # Pure SSE2 remainder: xmm0 - trunc(xmm0 / xmm1) * xmm1
+                self.emit.inst("movapd", "xmm2", "xmm0")
+                self.emit.inst("divsd", "xmm2", "xmm1")
+                self.emit.inst("roundsd", "xmm2", "xmm2", 3)
+                self.emit.inst("mulsd", "xmm2", "xmm1")
+                self.emit.inst("subsd", "xmm0", "xmm2")
+                self.emit.inst("movq", "rax", "xmm0")
             elif op == '^':
-                self.assembly.append("    call rt_float_pow")
-                self.assembly.append("    movq rax, xmm0")
+                self.emit.call_rt("rt_float_pow")
+                self.emit.inst("movq", "rax", "xmm0")
             elif op in ('=?', '?=', '!=', '=!', '>', '<', '>=', '=>', '<=', '=<', 'is', 'same'):
-                self.assembly.append("    ucomisd xmm0, xmm1")
-                
+                self.emit.inst("ucomisd", "xmm0", "xmm1")
                 if op in ('=?', '?=', 'is', 'same'):
-                    self.assembly.append("    sete al")
-                    self.assembly.append("    setnp bl")
-                    self.assembly.append("    and al, bl")
+                    self.emit.inst("sete", "al")
+                    self.emit.inst("setnp", "bl")
+                    self.emit.inst("and", "al", "bl")
                 elif op in ('!=', '=!'):
-                    self.assembly.append("    setne al")
-                    self.assembly.append("    setp bl")
-                    self.assembly.append("    or al, bl")
-                elif op == '>': self.assembly.append("    seta al") 
-                elif op == '<': self.assembly.append("    setb al") 
-                elif op in ('>=', '=>'): self.assembly.append("    setae al") 
-                elif op in ('<=', '=<'): self.assembly.append("    setbe al") 
-                
-                self.assembly.append("    movzx rax, al")
+                    self.emit.inst("setne", "al")
+                    self.emit.inst("setp", "bl")
+                    self.emit.inst("or", "al", "bl")
+                elif op == '>':          self.emit.inst("seta", "al")
+                elif op == '<':          self.emit.inst("setb", "al")
+                elif op in ('>=', '=>'): self.emit.inst("setae", "al")
+                elif op in ('<=', '=<'): self.emit.inst("setbe", "al")
+                self.emit.inst("movzx", "rax", "al")
 
-        else:    
+        else:
             # --- INTEGER NUMBERS ---
-            self.assembly.append("    push rax")
-            self.generate(node.left_node)
-            self.assembly.append("    pop rbx")
+            direct_rhs = self._can_use_direct_rhs(node.right_node)
+            if direct_rhs is not None and op in ('+', '-', 'and', 'or', 'xor', '=?', '?=', '!=', '=!', '>', '<', '>=', '=>', '<=', '=<', 'is', 'same'):
+                self.generate(node.left_node)
+                rhs_op = direct_rhs
+            else:
+                self.generate(node.right_node)
+                self.emit.push("rax")
+                self.generate(node.left_node)
+                self.emit.pop("rbx")
+                rhs_op = "rbx"
 
-            op = node.op_tok[1]
-            if op == '+': self.assembly.append("    add rax, rbx")
-            elif op == '-': self.assembly.append("    sub rax, rbx")
-            elif op == '*': self.assembly.append("    imul rax, rbx")
-            elif op == '/': 
-                self.assembly.append("    cqo")
-                self.assembly.append("    idiv rbx")
+            if op == '+':
+                self.emit.add("rax", rhs_op)
+            elif op == '-':
+                self.emit.sub("rax", rhs_op)
+            elif op == '*':
+                self.emit.inst("imul", "rax", rhs_op)
+            elif op == '/':
+                self.emit.inst("cqo")
+                self.emit.inst("idiv", "rbx")
             elif op == '%':
-                self.assembly.append("    cqo")
-                self.assembly.append("    idiv rbx")
-                self.assembly.append("    mov rax, rdx")
+                self.emit.inst("cqo")
+                self.emit.inst("idiv", "rbx")
+                self.emit.mov("rax", "rdx")
             elif op == '^':
-                self.assembly.append("    mov rdi, rax")
-                self.assembly.append("    mov rsi, rbx")
-                self.assembly.append("    call rt_int_pow")
+                self.emit.mov("rdi", "rax")
+                self.emit.mov("rsi", "rbx")
+                self.emit.call_rt("rt_int_pow")
             elif op == 'and':
-                self.assembly.append("    and rax, rbx")
+                self.emit.inst("and", "rax", rhs_op)
             elif op == 'or':
-                self.assembly.append("    or rax, rbx")
+                self.emit.inst("or", "rax", rhs_op)
             elif op == 'xor':
-                self.assembly.append("    xor rax, rbx")
+                self.emit.inst("xor", "rax", rhs_op)
             elif op in ('=?', '?=', '!=', '=!', '>', '<', '>=', '=>', '<=', '=<', 'is', 'same'):
-                self.assembly.append("    cmp rax, rbx")
-
-                if op in ('=?', '?=', 'is', 'same'): self.assembly.append("    sete al") 
-                elif op in ('!=', '=!'): self.assembly.append("    setne al") 
-                elif op == '>': self.assembly.append("    setg al") 
-                elif op == '<': self.assembly.append("    setl al") 
-                elif op in ('>=', '=>'): self.assembly.append("    setge al") 
-                elif op in ('<=', '=<'): self.assembly.append("    setle al") 
-                self.assembly.append("    movzx rax, al")
+                self.emit.cmp("rax", rhs_op)
+                if op in ('=?', '?=', 'is', 'same'):   self.emit.inst("sete", "al")
+                elif op in ('!=', '=!'):              self.emit.inst("setne", "al")
+                elif op == '>':                       self.emit.inst("setg", "al")
+                elif op == '<':                       self.emit.inst("setl", "al")
+                elif op in ('>=', '=>'):              self.emit.inst("setge", "al")
+                elif op in ('<=', '=<'):              self.emit.inst("setle", "al")
+                self.emit.inst("movzx", "rax", "al")
 
     def visit_UnaryOpNode(self, node):
         op = node.op_tok[1]
 
         if op in ('not', '!'):
             self.generate(node.node)
-            self.assembly.append("    test rax, rax")
-            self.assembly.append("    sete al")
-            self.assembly.append("    movzx rax, al")
+            self.emit.cmp("rax", 0)
+            self.emit.inst("sete", "al")
+            self.emit.inst("movzx", "rax", "al")
 
         elif op == '-':
             self.generate(node.node)
             op_type = getattr(node, 'operand_type', getattr(node, 'eval_type', getattr(node.node, 'eval_type', 'int')))
             if op_type in ('double', 'float'):
-                self.assembly.append("    movq xmm0, rax")
-                self.assembly.append("    pxor xmm1, xmm1")
-                self.assembly.append("    subsd xmm1, xmm0")
-                self.assembly.append("    movq rax, xmm1")
+                self.emit.inst("movq", "xmm0", "rax")
+                self.emit.inst("pxor", "xmm1", "xmm1")
+                self.emit.inst("subsd", "xmm1", "xmm0")
+                self.emit.inst("movq", "rax", "xmm1")
             else:
-                self.assembly.append("    neg rax")
-
+                self.emit.inst("neg", "rax")
 
         elif op in ('await', 'wait'):
             self.generate(node.node)
-            self.assembly.append("    mov rdi, rax") 
-            self.assembly.append("    xor esi, esi")   
-            self.assembly.append("    xor edx, edx")   
-            self.assembly.append("    xor r10d, r10d")   
-            self.assembly.append("    mov eax, 61")  
-            self.assembly.append("    syscall")
+            self.emit.mov("rdi", "rax")
+            self.emit.mov("esi", 0)
+            self.emit.mov("edx", 0)
+            self.emit.mov("r10d", 0)
+            self.emit.mov("eax", 61)
+            self.emit.syscall()
 
     def visit_BlockNode(self, node):
         """Converts the code blocks (lines) inside curly braces to Assembly in order."""
@@ -1702,7 +980,7 @@ class CodeGen:
         self.exit_scope()
 
     def visit_FuncCallNode(self, node):
-        """Calls the function and creates the Kernel Standard ABI Specifications."""
+        """Calls the functions and builtins."""
         func_name = node.node_to_call.var_name_tok[1]
 
         if func_name == 'print':
@@ -1710,42 +988,25 @@ class CodeGen:
             self.generate(arg_node)
 
             arg_type = getattr(arg_node, 'eval_type', 'string')
-
             if arg_type in ('any', 'var') and type(arg_node).__name__ == 'MemberAccessNode':
                 real_type = self._get_obj_type(arg_node)
-                if real_type: arg_type = real_type
+                if real_type:
+                    arg_type = real_type
 
             if arg_type == 'bool':
-                true_lbl = self.get_new_label("PRINT_TRUE")
-                end_lbl = self.get_new_label("PRINT_BOOL_END")
-
-                self.assembly.append("    test rax, rax")
-                self.assembly.append(f"    jne {true_lbl}")
-                self.assembly.append("    lea rax, [rel bool_false_msg]") 
-                self.assembly.append(f"    jmp {end_lbl}")
-                self.assembly.append(f"{true_lbl}:")
-                self.assembly.append("    lea rax, [rel bool_true_msg]")  
-                self.assembly.append(f"{end_lbl}:")
-                self.assembly.append("    call rt_print_string")
-                return
-            
-            if arg_type in ('hex', 'ptr', 'pointer', 'address'):
-                self.assembly.append("    call rt_print_hex")
-
+                self.emit.mov("rdi", "rax")
+                self.emit.call_rt("rt_bool_to_str")
+                self.emit.call_rt("rt_print_string")
+            elif arg_type in ('hex', 'ptr', 'pointer', 'address'):
+                self.emit.call_rt("rt_print_hex")
             elif arg_type in ('int', 'integer', 'any', 'var'):
-                self.assembly.append("    call rt_print_int")
+                self.emit.call_rt("rt_print_int")
             elif arg_type in ('double', 'float'):
-                self.assembly.append("    call rt_print_float")
+                self.emit.call_rt("rt_print_float")
             elif arg_type == 'char':
-                self.assembly.append("    push rax")
-                self.assembly.append("    mov rsi, rsp") # Top of address stack
-                self.assembly.append("    mov edi, 1")   # stdout
-                self.assembly.append("    mov edx, 1")   # 1 byte length
-                self.assembly.append("    mov eax, 1")   # sys_write
-                self.assembly.append("    syscall")
-                self.assembly.append("    pop rax")
+                self._emit_print_char()
             else:
-                self.assembly.append("    call rt_print_string")
+                self.emit.call_rt("rt_print_string")
             return
 
         elif func_name == 'printf':
@@ -1753,7 +1014,6 @@ class CodeGen:
                 return
 
             fmt_node = node.arg_nodes[0]
-
             if type(fmt_node).__name__ == 'StringNode':
                 raw_str = fmt_node.tok[1][1:-1]
                 chunks = self._parse_format_string(raw_str)
@@ -1768,157 +1028,142 @@ class CodeGen:
                         if text_content:
                             str_node = StringNode(('', f'"{text_content}"', 0, 0))
                             self.generate(str_node)
-                            self.assembly.append("    call rt_print_string")
-                
+                            self.emit.call_rt("rt_print_string")
                     elif chunk[0] == 'PLACEHOLDER':
                         _, expr_str, specifiers = chunk
                         target_ast, shortcuts, pos_idx = self._build_placeholder_ast(expr_str, specifiers, pos_args, pos_idx)
-                    
+
                         self.generate(target_ast)
                         eval_type = getattr(target_ast, 'eval_type', None) or self._get_obj_type(target_ast) or 'int'
 
-
                         if 'x' in shortcuts or 'X' in shortcuts or eval_type in ('hex', 'ptr', 'pointer', 'address'):
-                            self.assembly.append("    call rt_print_hex")
+                            self.emit.call_rt("rt_print_hex")
                         elif 'f' in shortcuts or eval_type in ('double', 'float'):
-                            self.assembly.append("    call rt_print_float")
+                            self.emit.call_rt("rt_print_float")
                         elif 'd' in shortcuts or 'i' in shortcuts or eval_type in ('int', 'integer', 'bool', 'any', 'var'):
-                            self.assembly.append("    call rt_print_int")
+                            self.emit.call_rt("rt_print_int")
                         elif eval_type == 'char':
-                            self.assembly.append("    push rax")
-                            self.assembly.append("    mov rsi, rsp")
-                            self.assembly.append("    mov edi, 1")
-                            self.assembly.append("    mov edx, 1")
-                            self.assembly.append("    mov eax, 1")
-                            self.assembly.append("    syscall")
-                            self.assembly.append("    pop rax")
+                            self._emit_print_char()
                         else:
-                            self.assembly.append("    call rt_print_string")
+                            self.emit.call_rt("rt_print_string")
                 return
-
             else:
                 for arg in node.arg_nodes:
                     self.generate(arg)
                     eval_type = getattr(arg, 'eval_type', None) or self._get_obj_type(arg) or 'string'
 
                     if eval_type in ('hex', 'ptr', 'pointer', 'address'):
-                        self.assembly.append("    call rt_print_hex")
+                        self.emit.call_rt("rt_print_hex")
                     elif eval_type in ('int', 'integer', 'bool'):
-                        self.assembly.append("    call rt_print_int")
+                        self.emit.call_rt("rt_print_int")
                     elif eval_type in ('double', 'float'):
-                        self.assembly.append("    call rt_print_float")
+                        self.emit.call_rt("rt_print_float")
                     elif eval_type == 'char':
-                        self.assembly.append("    push rax")
-                        self.assembly.append("    mov rsi, rsp")
-                        self.assembly.append("    mov edi, 1")
-                        self.assembly.append("    mov edx, 1")
-                        self.assembly.append("    mov eax, 1")
-                        self.assembly.append("    syscall")
-                        self.assembly.append("    pop rax")
+                        self._emit_print_char()
                     else:
-                        self.assembly.append("    call rt_print_string")
+                        self.emit.call_rt("rt_print_string")
                 return
 
-
         elif func_name == 'len':
-            self.generate(node.arg_nodes[0]) # Take the parameter into RAX
-            self.assembly.append("    mov rdi, rax")
-            self.assembly.append("    call rt_get_len")
+            self.generate(node.arg_nodes[0])
+            self.emit.mov("rdi", "rax")
+            self.emit.call_rt("rt_get_len")
             return
-        
+
         elif func_name == 'realloc':
-            self.generate(node.arg_nodes[1]) # Second parameter (new size)
-            self.assembly.append("    push rax")
-            self.generate(node.arg_nodes[0]) # First parameter (old pointer)
-            self.assembly.append("    mov rdi, rax")
-            self.assembly.append("    pop rsi") # Pull the second parameter into RSI
-            self.assembly.append("    call rt_realloc_mem")
+            self.generate(node.arg_nodes[1])
+            self.emit.push("rax")
+            self.generate(node.arg_nodes[0])
+            self.emit.mov("rdi", "rax")
+            self.emit.pop("rsi")
+            self.emit.call_rt("rt_realloc_mem")
             return
 
         elif func_name == 'type_of':
-            # Take the AST node of the parameter
             arg_node = node.arg_nodes[0]
-            
-            # Read eval_type
             detected_type = getattr(arg_node, 'eval_type', 'unknown')
-            
             from parser import StringNode
-            type_str_node = StringNode(('', f'"{detected_type}"', 0, 0))
-            self.visit_StringNode(type_str_node)
+            self.visit_StringNode(StringNode(('', f'"{detected_type}"', 0, 0)))
             return
 
         elif func_name == 'read':
             self.generate(node.arg_nodes[0])
-            self.assembly.append("    call rt_read_input")
+            self.emit.call_rt("rt_read_input")
             return
-        
+
         elif func_name == 'read_int':
-            self.assembly.append("    call rt_read_int")
+            self.emit.call_rt("rt_read_int")
             return
-        
+
         elif func_name == 'print_float':
             self.generate(node.arg_nodes[0])
-            self.assembly.append("    call rt_print_float")
+            self.emit.call_rt("rt_print_float")
             return
 
         elif func_name == 'print_hex':
             self.generate(node.arg_nodes[0])
-            self.assembly.append("    call rt_print_hex")
+            self.emit.call_rt("rt_print_hex")
             return
 
         elif func_name == 'exit':
             self.generate(node.arg_nodes[0])
-            self.assembly.append("    mov rdi, rax")
-            self.assembly.append("    call rt_exit_prog")
+            self.emit.mov("rdi", "rax")
+            self.emit.call_rt("rt_exit_prog")
             return
-        
+
         elif func_name == 'alloc':
             self.generate(node.arg_nodes[0])
-            self.assembly.append("    mov rdi, rax")
-            self.assembly.append("    call rt_alloc")
+            self.emit.mov("rdi", "rax")
+            self.emit.call_rt("rt_alloc")
+            return
+
+        elif func_name == 'free':
+            self.generate(node.arg_nodes[0])
+            self.emit.mov("rdi", "rax")
+            self.emit.call_rt("rt_free")
             return
 
         elif func_name == 'str_ndup':
             self.generate(node.arg_nodes[1])
-            self.assembly.append("    push rax")
+            self.emit.push("rax")
             self.generate(node.arg_nodes[0])
-            self.assembly.append("    mov rdi, rax")
-            self.assembly.append("    pop rsi")
-            self.assembly.append("    call rt_str_ndup")
+            self.emit.mov("rdi", "rax")
+            self.emit.pop("rsi")
+            self.emit.call_rt("rt_str_ndup")
             return
 
         elif func_name == 'sys_argc':
-            self.assembly.append("    mov rax, qword [rel global_argc]")
+            self.emit.mov("rax", "qword [rel global_argc]")
             return
 
         elif func_name == 'sys_argv':
             self.generate(node.arg_nodes[0])
-            self.assembly.append("    mov rbx, qword [rel global_argv]")
-            self.assembly.append("    mov rax, qword [rbx + rax*8]")
+            self.emit.mov("rbx", "qword [rel global_argv]")
+            self.emit.mov("rax", "qword [rbx + rax*8]")
             return
 
         elif func_name == 'get_mem':
-            self.generate(node.arg_nodes[1])  # offset -> RAX
-            self.assembly.append("    push rax")
-            self.generate(node.arg_nodes[0])  # ptr -> RAX
-            self.assembly.append("    mov rdi, rax")
-            self.assembly.append("    pop rsi")
-            self.assembly.append("    call rt_get_mem")
+            self.generate(node.arg_nodes[1])
+            self.emit.push("rax")
+            self.generate(node.arg_nodes[0])
+            self.emit.mov("rdi", "rax")
+            self.emit.pop("rsi")
+            self.emit.call_rt("rt_get_mem")
             return
 
         elif func_name == 'get_mem32':
-            self.generate(node.arg_nodes[1])  # offset -> RAX
-            self.assembly.append("    push rax")
-            self.generate(node.arg_nodes[0])  # ptr -> RAX
-            self.assembly.append("    mov rdi, rax")
-            self.assembly.append("    pop rsi")
-            self.assembly.append("    call rt_get_mem32")
+            self.generate(node.arg_nodes[1])
+            self.emit.push("rax")
+            self.generate(node.arg_nodes[0])
+            self.emit.mov("rdi", "rax")
+            self.emit.pop("rsi")
+            self.emit.call_rt("rt_get_mem32")
             return
 
-        elif func_name == 'addr_of' or func_name == 'ptr_to':
+        elif func_name in ('addr_of', 'ptr_to'):
             self.generate(node.arg_nodes[0])
             return
-        
+
         elif func_name == 'syscall':
             arg_count = len(node.arg_nodes)
             if arg_count > 7:
@@ -1927,80 +1172,72 @@ class CodeGen:
 
             for arg in node.arg_nodes:
                 self.generate(arg)
-                self.assembly.append("    push rax")
+                self.emit.push("rax")
 
-            for i in range(arg_count-1 , -1, -1):
-                target_reg = arg_registers[i]
-                self.assembly.append(f"    pop {target_reg}")
+            for i in range(arg_count - 1, -1, -1):
+                self.emit.pop(arg_registers[i])
 
-            self.assembly.append("    syscall")
+            self.emit.syscall()
             return
 
         arg_count = len(node.arg_nodes)
-        
         if arg_count > 6:
-            for i in range(arg_count -1, 5, -1):
+            for i in range(arg_count - 1, 5, -1):
                 self.generate(node.arg_nodes[i])
-                self.assembly.append("    push rax")
+                self.emit.push("rax")
 
-
-        # x86-64 Standard Parameter Registers 
         arg_registers = ['rdi', 'rsi', 'rdx', 'rcx', 'r8', 'r9']
-
         for i in range(min(6, arg_count)):
             self.generate(node.arg_nodes[i])
-            self.assembly.append(f"    push rax")
+            self.emit.push("rax")
 
-        for i in range(min(6, arg_count)-1, -1, -1):
-            self.assembly.append(f"    pop {arg_registers[i]}") 
+        for i in range(min(6, arg_count) - 1, -1, -1):
+            self.emit.pop(arg_registers[i])
 
         loc = self.get_var_loc(func_name)
         is_user_func = (
             (self.semantic_analyzer and hasattr(self.semantic_analyzer, 'functions') and func_name in self.semantic_analyzer.functions)
-            or (func_name in self.function_return_types) 
+            or (func_name in self.function_return_types)
         )
         if loc is None and not is_user_func:
             raise Exception(f"Compile Error: Undefined function '{func_name}'")
-        
+
         if loc is not None:
-            self.assembly.append(f"    mov rax, {loc}")
-            self.assembly.append("    call rax")
+            self.emit.mov("rax", loc)
+            self.emit.call("rax")
         else:
-            self.assembly.append(f"    call fn_{func_name}")
+            self.emit.call(f"fn_{func_name}")
 
         extra_args = max(0, arg_count - 6)
         if extra_args > 0:
-            self.assembly.append(f"    add rsp, {extra_args * 8}")
+            self.emit.add("rsp", extra_args * 8)
 
     def visit_FuncDefNode(self, node):
         """Creates a new function and configures Scope settings."""
         if node.modifier_tok and node.modifier_tok[1] == 'extern':
             func_name = node.func_name_tok[1]
-            self.data_section.append(f"; extern fn_{func_name}")
+            self.emit.emit_data(f"; extern fn_{func_name}")
             return
 
         func_name = node.func_name_tok[1]
         exit_label = f"exit_fn_{func_name}"
 
-        main_assembly = self.assembly
-        self.assembly = self.functions_code
-
+        self.emit.use_func_buffer()
         old_exit_label = self.current_func_exit_label
         self.current_func_exit_label = exit_label
-        self.assembly.append("")
-        self.assembly.append(f"fn_{func_name}:")
-        self.assembly.append("    push rbp")
-        self.assembly.append("    mov rbp, rsp")
+
+        self.emit.raw("")
+        self.emit.label(f"fn_{func_name}")
+        self.emit.push("rbp")
+        self.emit.mov("rbp", "rsp")
 
         is_async = (node.modifier_tok and node.modifier_tok[1] == 'async')
-
         if is_async:
-            self.assembly.append("    mov rax, 57")
-            self.assembly.append("    syscall")
-            self.assembly.append("    test rax, rax")
-
+            self.emit.mov("eax", 57)
+            self.emit.syscall()
+            self.emit.cmp("rax", 0)
             parent_label = self.get_new_label(f"ASYNC_PARENT_{func_name}")
-            self.assembly.append(f"    jne {parent_label}")
+            self.emit.jcc("ne", parent_label)
 
         old_stack_offset = self.stack_offset
         self.stack_offset = 0
@@ -2010,88 +1247,86 @@ class CodeGen:
         type_env = self.type_environments[-1]
         arg_registers = ['rdi', 'rsi', 'rdx', 'rcx', 'r8', 'r9']
 
+        if node.args:
+            self.emit.sub("rsp", len(node.args) * 8)
+
         for i, (arg_type, arg_name_tok) in enumerate(node.args):
             arg_name = arg_name_tok[1]
             self.stack_offset += 8
             current_env[arg_name] = self.stack_offset
             type_env[arg_name] = arg_type[1]
-            self.assembly.append("    sub rsp, 8")
             if i < 6:
-                self.assembly.append(f"    mov qword [rbp - {self.stack_offset}], {arg_registers[i]}")
+                self.emit.mov(f"qword [rbp - {self.stack_offset}]", arg_registers[i])
             else:
                 read_offset = 16 + (i - 6) * 8
-                self.assembly.append(f"    mov rax, qword [rbp + {read_offset}]")
-                self.assembly.append(f"    mov qword [rbp -{self.stack_offset}], rax ")
+                self.emit.mov("rax", f"qword [rbp + {read_offset}]")
+                self.emit.mov(f"qword [rbp - {self.stack_offset}]", "rax")
 
         self.generate(node.body_node)
 
         self.exit_scope()
         self.stack_offset = old_stack_offset
 
-        self.assembly.append(f"{exit_label}:")
+        self.emit.label(exit_label)
         if is_async:
-            self.assembly.append("    mov rdi, 0")
-            self.assembly.append("    mov eax, 60") # sys_exit
-            self.assembly.append("    syscall")
-            self.assembly.append(f"{parent_label}:")
-            self.assembly.append("    mov rsp, rbp")
-            self.assembly.append("    pop rbp")
-            self.assembly.append("    ret")
-        else:
-            self.assembly.append("    mov rsp, rbp")
-            self.assembly.append("    pop rbp")
-            self.assembly.append("    ret")
+            self.emit.mov("rdi", 0)
+            self.emit.mov("eax", 60)
+            self.emit.syscall()
+            self.emit.label(parent_label)
+
+        self.emit.mov("rsp", "rbp")
+        self.emit.pop("rbp")
+        self.emit.ret()
 
         self.current_func_exit_label = old_exit_label
-        self.assembly = main_assembly
+        self.emit.use_main_buffer()
 
     def visit_AnFuncNode(self, node):
         func_lbl = self.get_new_label("ANON_FUNC")
         exit_lbl = f".exit_{func_lbl}"
 
-        main_assembly = self.assembly
-        self.assembly = self.functions_code
-
+        self.emit.use_func_buffer()
         old_exit_label = self.current_func_exit_label
         self.current_func_exit_label = exit_lbl
-        
-        self.assembly.append("")
-        self.assembly.append(f"{func_lbl}:")
-        self.assembly.append("    push rbp")
-        self.assembly.append("    mov rbp, rsp")
-        
+
+        self.emit.raw("")
+        self.emit.label(func_lbl)
+        self.emit.push("rbp")
+        self.emit.mov("rbp", "rsp")
+
         old_stack = self.stack_offset
         self.stack_offset = 0
         self.enter_scope()
         current_env = self.environments[-1]
         arg_registers = ['rdi', 'rsi', 'rdx', 'rcx', 'r8', 'r9']
-        
+
+        if node.args:
+            self.emit.sub("rsp", len(node.args) * 8)
+
         for i, (arg_type, arg_name_tok) in enumerate(node.args):
             arg_name = arg_name_tok[1]
             self.stack_offset += 8
             current_env[arg_name] = self.stack_offset
-            self.assembly.append("    sub rsp, 8")
             if i < 6:
-                self.assembly.append(f"    mov qword [rbp - {self.stack_offset}], {arg_registers[i]}")
+                self.emit.mov(f"qword [rbp - {self.stack_offset}]", arg_registers[i])
             else:
                 read_offset = 16 + (i - 6) * 8
-                self.assembly.append(f"    mov rax, qword [rbp + {read_offset}]")
-                self.assembly.append(f"    mov qword [rbp - {self.stack_offset}], rax")
-        
+                self.emit.mov("rax", f"qword [rbp + {read_offset}]")
+                self.emit.mov(f"qword [rbp - {self.stack_offset}]", "rax")
+
         self.generate(node.body_node)
-        
+
         self.exit_scope()
         self.stack_offset = old_stack
 
-        self.assembly.append(f"{exit_lbl}:")
-        self.assembly.append("    mov rsp, rbp")
-        self.assembly.append("    pop rbp")
-        self.assembly.append("    ret")
-        
+        self.emit.label(exit_lbl)
+        self.emit.mov("rsp", "rbp")
+        self.emit.pop("rbp")
+        self.emit.ret()
+
         self.current_func_exit_label = old_exit_label
-        self.assembly = main_assembly
-        
-        self.assembly.append(f"    lea rax, [rel {func_lbl}]")
+        self.emit.use_main_buffer()
+        self.emit.lea("rax", f"[rel {func_lbl}]")
 
     def visit_ReturnNode(self, node):
         """Returns a value from the function."""
@@ -2099,269 +1334,217 @@ class CodeGen:
             self.generate(node.node_to_return)
 
         if self.current_func_exit_label:
-            self.assembly.append(f"    jmp {self.current_func_exit_label}")
+            self.emit.jmp(self.current_func_exit_label)
         else:
-            self.assembly.append("    mov rsp, rbp")
-            self.assembly.append("    pop rbp")
-            self.assembly.append("    ret")
+            self.emit.mov("rsp", "rbp")
+            self.emit.pop("rbp")
+            self.emit.ret()
 
     def visit_StringNode(self, node):
-        """Writes the text data as a .data file and places the address in RAX."""
+        """Writes static string data to .data and loads RIP-relative address into RAX."""
         self.string_count += 1
         label = f"str_{self.string_count}"
-
-        #Tırnakları at
         raw_str = node.tok[1][1:-1]
 
-        self.data_section.append(f"    {label} db `{raw_str}`, 0")
-
-        self.assembly.append(f"    mov rax, {label}")
+        self.emit.emit_data(f"{label} db `{raw_str}`, 0")
+        self.emit.lea("rax", f"[rel {label}]")
 
     def visit_SyncUnitNode(self, node):
         unit_name = node.unit_name_tok[1]
         exit_lbl = f".exit_unit_{unit_name}"
 
-        main_assembly = self.assembly
-        self.assembly = self.functions_code
-
+        self.emit.use_func_buffer()
         old_exit_label = self.current_func_exit_label
         self.current_func_exit_label = exit_lbl
-        
-        self.assembly.append("")
-        self.assembly.append(f"unit_{unit_name}:")
-        self.assembly.append("    push rbp")
-        self.assembly.append("    mov rbp, rsp")
-        
+
+        self.emit.raw("")
+        self.emit.label(f"unit_{unit_name}")
+        self.emit.push("rbp")
+        self.emit.mov("rbp", "rsp")
+
         self.enter_scope()
         self.generate(node.body_node)
         self.exit_scope()
 
-        self.assembly.append(f"{exit_lbl}:")
-        self.assembly.append("    mov rsp, rbp")
-        self.assembly.append("    pop rbp")
-        self.assembly.append("    ret")
+        self.emit.label(exit_lbl)
+        self.emit.mov("rsp", "rbp")
+        self.emit.pop("rbp")
+        self.emit.ret()
 
         self.current_func_exit_label = old_exit_label
-        self.assembly = main_assembly
+        self.emit.use_main_buffer()
 
     def visit_WithNode(self, node):
         unit_name = node.unit_name_tok[1]
         if not node.is_wait:
-            self.assembly.append("    mov eax, 57") 
-            self.assembly.append("    syscall")
-            self.assembly.append("    test rax, rax")
+            self.emit.mov("eax", 57)
+            self.emit.syscall()
+            self.emit.cmp("rax", 0)
             parent_lbl = self.get_new_label("WITH_PARENT")
-            self.assembly.append(f"    jne {parent_lbl}") 
+            self.emit.jcc("ne", parent_lbl)
 
-            self.assembly.append(f"    call unit_{unit_name}")
+            self.emit.call(f"unit_{unit_name}")
             self.generate(node.body_node)
 
-            self.assembly.append("    mov eax, 60")
-            self.assembly.append("    xor edi, edi")
-            self.assembly.append("    syscall")
-            
-            self.assembly.append(f"{parent_lbl}:")
+            self.emit.mov("eax", 60)
+            self.emit.mov("edi", 0)
+            self.emit.syscall()
 
+            self.emit.label(parent_lbl)
         else:
-            self.assembly.append(f"    call unit_{unit_name}")
+            self.emit.call(f"unit_{unit_name}")
             self.generate(node.body_node)
 
     def visit_KeywordNode(self, node):
         """Converts True, False, and Null to Binary."""
         val = node.tok[1]
         if val == 'true':
-            self.assembly.append("    mov rax, 1")
+            self.emit.mov("eax", 1)
         elif val in ('false', 'null'):
-            self.assembly.append("    xor eax, eax")
+            self.emit.mov("rax", 0)
 
     def visit_WhenNode(self, node):
-        self.assembly.append("    mov eax, 57") 
-        self.assembly.append("    syscall")
-        self.assembly.append("    test rax, rax")
+        self.emit.mov("eax", 57)
+        self.emit.syscall()
+        self.emit.cmp("rax", 0)
 
         parent_lbl = self.get_new_label("WHEN_PARENT")
-        self.assembly.append(f"    jne {parent_lbl}")
+        self.emit.jcc("ne", parent_lbl)
 
         loop_lbl = self.get_new_label("WHEN_LOOP")
-        self.assembly.append(f"{loop_lbl}:")
+        self.emit.label(loop_lbl)
 
-        self.assembly.append("    sub rsp, 16")
-        self.assembly.append("    mov qword [rsp], 0")          
-        self.assembly.append("    mov qword [rsp+8], 10000000") 
-        self.assembly.append("    mov rdi, rsp")
-        self.assembly.append("    xor esi, esi")
-        self.assembly.append("    mov eax, 35") 
-        self.assembly.append("    syscall")
-        self.assembly.append("    add rsp, 16")
+        self.emit.sub("rsp", 16)
+        self.emit.mov("qword [rsp]", 0)
+        self.emit.mov("qword [rsp + 8]", 10000000)
+        self.emit.mov("rdi", "rsp")
+        self.emit.mov("esi", 0)
+        self.emit.mov("eax", 35)
+        self.emit.syscall()
+        self.emit.add("rsp", 16)
 
         self.generate(node.condition)
-        self.assembly.append("    test rax, rax")
-        self.assembly.append(f"    je {loop_lbl}")
+        self.emit.cmp("rax", 0)
+        self.emit.jcc("e", loop_lbl)
 
         self.generate(node.body)
-        
-        self.assembly.append("    mov eax, 60")
-        self.assembly.append("    xor edi, edi")
-        self.assembly.append("    syscall")
-        
-        self.assembly.append(f"{parent_lbl}:")
+
+        self.emit.mov("eax", 60)
+        self.emit.mov("edi", 0)
+        self.emit.syscall()
+
+        self.emit.label(parent_lbl)
 
     def visit_IndexAccessNode(self, node):
         eval_type = getattr(node, 'eval_type', 'any')
-        
-        self.generate(node.index_node)
-        self.assembly.append("    push rax")
 
+        self.generate(node.index_node)
+        self.emit.push("rax")
         self.generate(node.left_node)
-        self.assembly.append("    pop rbx") # RBX = index
+        self.emit.pop("rbx")
 
         bounds_fail = self.get_new_label("BOUNDS_FAIL")
         bounds_ok = self.get_new_label("BOUNDS_OK")
 
-        self.assembly.append("    test rbx, rbx")
-        self.assembly.append(f"    js {bounds_fail}") 
+        self.emit.cmp("rbx", 0)
+        self.emit.jcc("s", bounds_fail)
 
+        if eval_type != 'char':
+            self.emit.mov("rcx", "qword [rax - 8]")
+            self.emit.inst("shr", "rcx", 3)
+            self.emit.cmp("rbx", "rcx")
+            self.emit.jcc("ge", bounds_fail)
+        self.emit.jmp(bounds_ok)
+
+        self.emit.label(bounds_fail)
+        self._emit_raise_error(99)
+
+        self.emit.label(bounds_ok)
         if eval_type == 'char':
-            self.assembly.append(f"    jmp {bounds_ok}")
-        else:   
-            self.assembly.append("    mov rcx, qword [rax -8]")
-            self.assembly.append("    shr rcx, 3")
-            self.assembly.append("    cmp rbx, rcx")
-            self.assembly.append(f"    jge {bounds_fail}") # Fail if Index >= Size
-            self.assembly.append(f"    jmp {bounds_ok}")
-
-        self.assembly.append(f"{bounds_fail}:")
-        self.assembly.append("    mov eax, 99") # OUT OF BOUNDS
-        self.assembly.append("    mov rbx, qword [rel global_err_frame]")
-        self.assembly.append("    cmp rbx, 0")
-        crash_lbl = self.get_new_label("CRASH")
-        self.assembly.append(f"    je {crash_lbl}") # Crash if no catch backup
-        self.assembly.append("    mov rcx, qword [rbx + 24]")
-        self.assembly.append("    mov qword [rel global_err_frame], rcx")
-        self.assembly.append("    mov rdx, qword [rbx + 16]")
-        self.assembly.append("    mov rbp, qword [rbx + 8]")
-        self.assembly.append("    mov rsp, qword [rbx]")
-        self.assembly.append("    jmp rdx") # Go to exclude
-        
-        self.assembly.append(f"{crash_lbl}:")
-        self.assembly.append("    mov rdi, rax")
-        self.assembly.append("    mov eax, 60")
-        self.assembly.append("    syscall") # Crash
-
-        self.assembly.append(f"{bounds_ok}:")
-
-        if eval_type == 'char':
-            # Read 1 byte for a char
-            self.assembly.append("    movzx rax, byte [rax + rbx]")
+            self.emit.inst("movzx", "rax", "byte [rax + rbx]")
         else:
-            self.assembly.append("    shl rbx, 3") # rbx*8
-            self.assembly.append("    mov rax, qword [rax + rbx]")
+            self.emit.mov("rax", "qword [rax + rbx*8]")
 
     def visit_IndexAssignNode(self, node):
         eval_type = getattr(node, 'eval_type', 'any')
-        
+
         self.generate(node.value_node)
-        self.assembly.append("    push rax")     
-
+        self.emit.push("rax")
         self.generate(node.index_node)
-        self.assembly.append("    push rax")
-
-        self.generate(node.left_node)           
-        self.assembly.append("    pop rbx")      # RBX = index
-        self.assembly.append("    pop rcx")      # RCX = new value
+        self.emit.push("rax")
+        self.generate(node.left_node)
+        self.emit.pop("rbx")
+        self.emit.pop("rcx")
 
         bounds_fail = self.get_new_label("BOUNDS_FAIL")
         bounds_ok = self.get_new_label("BOUNDS_OK")
-        
-        self.assembly.append("    test rbx, rbx")
-        self.assembly.append(f"    js {bounds_fail}") 
-         
-        if eval_type == 'char':
-            self.assembly.append(f"    jmp {bounds_ok}")
-        else:
-            self.assembly.append("    mov r8, qword [rax -8]")
-            self.assembly.append("    shr r8, 3") 
-            self.assembly.append("    cmp rbx, r8")
-            self.assembly.append(f"    jge {bounds_fail}") 
-            self.assembly.append(f"    jmp {bounds_ok}")
 
-        self.assembly.append(f"{bounds_fail}:")
-        self.assembly.append("    mov eax, 99") # OUT OF BOUNDS
-        self.assembly.append("    mov rbx, qword [rel global_err_frame]")
-        self.assembly.append("    cmp rbx, 0")
-        crash_lbl = self.get_new_label("CRASH")
-        self.assembly.append(f"    je {crash_lbl}") 
-        self.assembly.append("    mov rcx, qword [rbx + 24]")
-        self.assembly.append("    mov qword [rel global_err_frame], rcx")
-        self.assembly.append("    mov rdx, qword [rbx + 16]")
-        self.assembly.append("    mov rbp, qword [rbx + 8]")
-        self.assembly.append("    mov rsp, qword [rbx]")
-        self.assembly.append("    jmp rdx") 
-        
-        self.assembly.append(f"{crash_lbl}:")
-        self.assembly.append("    mov rdi, rax")
-        self.assembly.append("    mov eax, 60")
-        self.assembly.append("    syscall") 
+        self.emit.cmp("rbx", 0)
+        self.emit.jcc("s", bounds_fail)
 
-        self.assembly.append(f"{bounds_ok}:")
+        if eval_type != 'char':
+            self.emit.mov("r8", "qword [rax - 8]")
+            self.emit.inst("shr", "r8", 3)
+            self.emit.cmp("rbx", "r8")
+            self.emit.jcc("ge", bounds_fail)
+        self.emit.jmp(bounds_ok)
 
+        self.emit.label(bounds_fail)
+        self._emit_raise_error(99)
 
+        self.emit.label(bounds_ok)
         op = node.op_tok[1]
 
         if eval_type == 'char':
             if op == '=':
-                self.assembly.append("    mov byte [rax + rbx], cl") # Writes 1 byte
+                self.emit.mov("byte [rax + rbx]", "cl")
             else:
                 raise Exception("Semantik Error: Invalid operation type on chars.")
         else:
-            self.assembly.append("    shl rbx, 3") # Index*8
             if op == '=':
-                self.assembly.append("    mov qword [rax + rbx], rcx")
+                self.emit.mov("qword [rax + rbx*8]", "rcx")
             elif op in ('+=', '=+'):
-                self.assembly.append("    add qword [rax + rbx], rcx")
+                self.emit.add("qword [rax + rbx*8]", "rcx")
             elif op in ('-=', '=-'):
-                self.assembly.append("    sub qword [rax + rbx], rcx")
+                self.emit.sub("qword [rax + rbx*8]", "rcx")
             elif op in ('*=', '=*'):
-                self.assembly.append("    push rax")
-                self.assembly.append("    mov rax, qword [rax + rbx]")
-                self.assembly.append("    imul rax, rcx")
-                self.assembly.append("    mov rcx, rax")
-                self.assembly.append("    pop rax")
-                self.assembly.append("    mov qword [rax + rbx], rcx")
+                self.emit.mov("r8", "qword [rax + rbx*8]")
+                self.emit.inst("imul", "r8", "rcx")
+                self.emit.mov("qword [rax + rbx*8]", "r8")
             elif op in ('/=', '=/'):
-                self.assembly.append("    mov r8, qword [rax + rbx]")
-                self.assembly.append("    push rax")
-                self.assembly.append("    push rbx")
-                self.assembly.append("    mov rax, r8")
-                self.assembly.append("    mov rbx, rcx")
-                self.assembly.append("    cqo")
-                self.assembly.append("    idiv rbx")
-                self.assembly.append("    mov rcx, rax")
-                self.assembly.append("    pop rbx")
-                self.assembly.append("    pop rax")
-                self.assembly.append("    mov qword [rax + rbx], rcx")
+                self.emit.mov("r8", "qword [rax + rbx*8]")
+                self.emit.push("rax")
+                self.emit.push("rbx")
+                self.emit.mov("rax", "r8")
+                self.emit.mov("rbx", "rcx")
+                self.emit.inst("cqo")
+                self.emit.inst("idiv", "rbx")
+                self.emit.mov("rcx", "rax")
+                self.emit.pop("rbx")
+                self.emit.pop("rax")
+                self.emit.mov("qword [rax + rbx*8]", "rcx")
             elif op in ('%=', '=%'):
-                self.assembly.append("    mov r8, qword [rax + rbx]")
-                self.assembly.append("    push rax")
-                self.assembly.append("    push rbx")
-                self.assembly.append("    mov rax, r8")
-                self.assembly.append("    mov rbx, rcx")
-                self.assembly.append("    cqo")
-                self.assembly.append("    idiv rbx")
-                self.assembly.append("    mov rcx, rdx")
-                self.assembly.append("    pop rbx")
-                self.assembly.append("    pop rax")
-                self.assembly.append("    mov qword [rax + rbx], rcx")
+                self.emit.mov("r8", "qword [rax + rbx*8]")
+                self.emit.push("rax")
+                self.emit.push("rbx")
+                self.emit.mov("rax", "r8")
+                self.emit.mov("rbx", "rcx")
+                self.emit.inst("cqo")
+                self.emit.inst("idiv", "rbx")
+                self.emit.mov("rcx", "rdx")
+                self.emit.pop("rbx")
+                self.emit.pop("rax")
+                self.emit.mov("qword [rax + rbx*8]", "rcx")
             elif op in ('^=', '=^'):
-                self.assembly.append("    mov rdi, qword [rax + rbx]")
-                self.assembly.append("    mov rsi, rcx")
-                self.assembly.append("    push rax")
-                self.assembly.append("    push rbx")
-                self.assembly.append("    call rt_int_pow")
-                self.assembly.append("    mov rcx, rax")
-                self.assembly.append("    pop rbx")
-                self.assembly.append("    pop rax")
-                self.assembly.append("    mov qword [rax + rbx], rcx")
+                self.emit.mov("rdi", "qword [rax + rbx*8]")
+                self.emit.mov("rsi", "rcx")
+                self.emit.push("rax")
+                self.emit.push("rbx")
+                self.emit.call_rt("rt_int_pow")
+                self.emit.mov("rcx", "rax")
+                self.emit.pop("rbx")
+                self.emit.pop("rax")
+                self.emit.mov("qword [rax + rbx*8]", "rcx")
 
     def visit_ClassDefNode(self, node):
         """Saves the class template to the memory map at compile time."""
@@ -2395,135 +1578,115 @@ class CodeGen:
     def visit_MemberAssignNode(self, node):
         """Assigns a value to the object.field."""
         obj_type = self._get_obj_type(node.left_node)
-
         if not obj_type or obj_type == 'var':
-            raise Exception(f"Compiling Error: Unknown Class for Variable")
+            raise Exception("Compiling Error: Unknown Class for Variable")
 
         field_name = node.member_name_tok[1]
         field_info = self.class_layouts[obj_type]['layout'].get(field_name)
-
         if not field_info:
             raise Exception(f"Compiling Error: Class '{obj_type}' has no properties specified as: '{field_name}'")
 
-        if field_info['modifier'] == 'private' and self.current_class != obj_type:
-            raise Exception(f"Access Violation: '{field_name}' is private")
-
-        offset = field_info['offset']    
-
+        offset = field_info['offset']
         self.generate(node.value_node)
-        self.assembly.append("    push rax")
-
+        self.emit.push("rax")
         self.generate(node.left_node)
-        self.assembly.append("    pop rcx")
+        self.emit.pop("rcx")
 
         op = node.op_tok[1]
         if op == '=':
-            self.assembly.append(f"    mov qword [rax + {offset}], rcx")
+            self.emit.mov(f"qword [rax + {offset}]", "rcx")
         elif op in ('+=', '=+'):
-            self.assembly.append(f"    add qword [rax + {offset}], rcx")
+            self.emit.add(f"qword [rax + {offset}]", "rcx")
         elif op in ('-=', '=-'):
-            self.assembly.append(f"    sub qword [rax + {offset}], rcx")
+            self.emit.sub(f"qword [rax + {offset}]", "rcx")
         elif op in ('*=', '=*'):
-            self.assembly.append("    push rax")
-            self.assembly.append(f"    mov rax, qword [rax + {offset}]")
-            self.assembly.append("    imul rax, rcx")
-            self.assembly.append("    mov rcx, rax")
-            self.assembly.append("    pop rax")
-            self.assembly.append(f"    mov qword [rax + {offset}], rcx")
+            self.emit.mov("r8", f"qword [rax + {offset}]")
+            self.emit.inst("imul", "r8", "rcx")
+            self.emit.mov(f"qword [rax + {offset}]", "r8")
         elif op in ('/=', '=/'):
-            self.assembly.append(f"    mov r8, qword [rax + {offset}]")
-            self.assembly.append("    push rax")
-            self.assembly.append("    mov rax, r8")
-            self.assembly.append("    mov rbx, rcx")
-            self.assembly.append("    cqo")
-            self.assembly.append("    idiv rbx")
-            self.assembly.append("    mov rcx, rax")
-            self.assembly.append("    pop rax")
-            self.assembly.append(f"    mov qword [rax + {offset}], rcx")
+            self.emit.mov("r8", f"qword [rax + {offset}]")
+            self.emit.push("rax")
+            self.emit.mov("rax", "r8")
+            self.emit.mov("rbx", "rcx")
+            self.emit.inst("cqo")
+            self.emit.inst("idiv", "rbx")
+            self.emit.mov("rcx", "rax")
+            self.emit.pop("rax")
+            self.emit.mov(f"qword [rax + {offset}]", "rcx")
         elif op in ('%=', '=%'):
-            self.assembly.append(f"    mov r8, qword [rax + {offset}]")
-            self.assembly.append("    push rax")
-            self.assembly.append("    mov rax, r8")
-            self.assembly.append("    mov rbx, rcx")
-            self.assembly.append("    cqo")
-            self.assembly.append("    idiv rbx")
-            self.assembly.append("    mov rcx, rdx")
-            self.assembly.append("    pop rax")
-            self.assembly.append(f"    mov qword [rax + {offset}], rcx")
+            self.emit.mov("r8", f"qword [rax + {offset}]")
+            self.emit.push("rax")
+            self.emit.mov("rax", "r8")
+            self.emit.mov("rbx", "rcx")
+            self.emit.inst("cqo")
+            self.emit.inst("idiv", "rbx")
+            self.emit.mov("rcx", "rdx")
+            self.emit.pop("rax")
+            self.emit.mov(f"qword [rax + {offset}]", "rcx")
         elif op in ('^=', '=^'):
-            self.assembly.append(f"    mov rdi, qword [rax + {offset}]")
-            self.assembly.append("    mov rsi, rcx")
-            self.assembly.append("    push rax")
-            self.assembly.append("    call rt_int_pow")
-            self.assembly.append("    mov rcx, rax")
-            self.assembly.append("    pop rax")
-            self.assembly.append(f"    mov qword [rax + {offset}], rcx")
+            self.emit.mov("rdi", f"qword [rax + {offset}]")
+            self.emit.mov("rsi", "rcx")
+            self.emit.push("rax")
+            self.emit.call_rt("rt_int_pow")
+            self.emit.mov("rcx", "rax")
+            self.emit.pop("rax")
+            self.emit.mov(f"qword [rax + {offset}]", "rcx")
 
     def visit_NewObjectNode(self, node):
         """Calculates the class size and calls `alloc()` When encounters the `new Class()` structure."""
         class_name = node.class_name_tok[1]
-
         if class_name not in self.class_layouts:
             raise Exception(f"Compiling Error: '{class_name}' is not defined.")
-        
-        class_size = self.class_layouts[class_name]['size']
 
-        if class_size == 0:
-            class_size = 8
-
-        self.assembly.append(f"    mov rax, {class_size}")
-        self.assembly.append("    mov rdi, rax")
-        self.assembly.append("    call rt_alloc")
-
-        self.assembly.append("    push rax")
+        class_size = self.class_layouts[class_name]['size'] or 8
+        self.emit.mov("edi", class_size)
+        self.emit.call_rt("rt_alloc")
+        self.emit.push("rax")
 
         if self.class_layouts[class_name].get('has_init'):
             init_info = self.class_layouts[class_name]['methods'].get('init')
             declared_class = init_info['declared_in'] if init_info else class_name
-            method_name = f"{declared_class}_init"
+            method_name = f"cls_{declared_class}_init"
             arg_count = len(node.arg_nodes) + 1
 
             if arg_count > 6:
-                for i in range(len(node.arg_nodes)-1, 4, -1):
+                for i in range(len(node.arg_nodes) - 1, 4, -1):
                     self.generate(node.arg_nodes[i])
-                    self.assembly.append("    push rax")
+                    self.emit.push("rax")
 
             arg_registers = ['rdi', 'rsi', 'rdx', 'rcx', 'r8', 'r9']
-
             for i in range(min(5, len(node.arg_nodes))):
                 self.generate(node.arg_nodes[i])
-                self.assembly.append(f"    push rax")
+                self.emit.push("rax")
 
             for i in range(min(5, len(node.arg_nodes)) - 1, -1, -1):
-                self.assembly.append(f"    pop {arg_registers[i+1]}")
+                self.emit.pop(arg_registers[i + 1])
 
-            self.assembly.append("    mov rdi, qword [rsp]")
-            self.assembly.append(f"    call {method_name}")
+            self.emit.mov("rdi", "qword [rsp]")
+            self.emit.call(method_name)
 
-            extra_args = max(0, arg_count -6)
+            extra_args = max(0, arg_count - 6)
             if extra_args > 0:
-                self.assembly.append(f"    add rsp, {extra_args * 8}")
-        
-        self.assembly.append("    pop rax")
+                self.emit.add("rsp", extra_args * 8)
+
+        self.emit.pop("rax")
 
     def visit_MethodDefNode(self, node):
         """Converts a method written within a class to Assembly."""
         if not self.current_class:
             raise Exception("Compiling Error: Methods can only be defined in a class.")
-        
-        func_name = f"{self.current_class}_{node.func_name_tok[1]}"
+
+        func_name = f"cls_{self.current_class}_{node.func_name_tok[1]}"
         exit_label = f"exit_func_{func_name}"
 
-        main_assembly = self.assembly
-        self.assembly = self.functions_code
-
+        self.emit.use_func_buffer()
         old_exit_label = self.current_func_exit_label
         self.current_func_exit_label = exit_label
 
-        self.assembly.append("")
-        self.assembly.append(f"{func_name}:")
-        self.assembly.append("    push rbp")
-        self.assembly.append("    mov rbp, rsp")
+        self.emit.raw("")
+        self.emit.label(func_name)
+        self.emit.push("rbp")
+        self.emit.mov("rbp", "rsp")
 
         old_stack_offset = self.stack_offset
         self.stack_offset = 0
@@ -2531,14 +1694,15 @@ class CodeGen:
         self.enter_scope()
         current_env = self.environments[-1]
         type_env = self.type_environments[-1]
-
         arg_registers = ['rdi', 'rsi', 'rdx', 'rcx', 'r8', 'r9']
+
+        # Single allocation for 'this' + method arguments
+        self.emit.sub("rsp", (len(node.args) + 1) * 8)
 
         self.stack_offset += 8
         current_env['this'] = self.stack_offset
-        type_env['this'] = self.current_class 
-        self.assembly.append("    sub rsp, 8")
-        self.assembly.append(f"    mov qword [rbp - {self.stack_offset}], rdi")  
+        type_env['this'] = self.current_class
+        self.emit.mov(f"qword [rbp - {self.stack_offset}]", "rdi")
 
         for i, (arg_type, arg_name_tok) in enumerate(node.args):
             arg_name = arg_name_tok[1]
@@ -2546,273 +1710,231 @@ class CodeGen:
             current_env[arg_name] = self.stack_offset
             type_env[arg_name] = arg_type[1]
 
-            reg_index = i + 1 
-            self.assembly.append("    sub rsp, 8")
+            reg_index = i + 1
             if reg_index < 6:
-                self.assembly.append(f"    mov qword [rbp - {self.stack_offset}], {arg_registers[reg_index]}")
+                self.emit.mov(f"qword [rbp - {self.stack_offset}]", arg_registers[reg_index])
             else:
                 read_offset = 16 + (reg_index - 6) * 8
-                self.assembly.append(f"    mov rax, qword [rbp + {read_offset}]")
-                self.assembly.append(f"    mov qword [rbp - {self.stack_offset}], rax")
+                self.emit.mov("rax", f"qword [rbp + {read_offset}]")
+                self.emit.mov(f"qword [rbp - {self.stack_offset}]", "rax")
 
         self.generate(node.body_node)
 
         self.exit_scope()
         self.stack_offset = old_stack_offset
 
-        self.assembly.append(f"{exit_label}:")
-        self.assembly.append("    mov rsp, rbp")
-        self.assembly.append("    pop rbp")
-        self.assembly.append("    ret")
+        self.emit.label(exit_label)
+        self.emit.mov("rsp", "rbp")
+        self.emit.pop("rbp")
+        self.emit.ret()
 
         self.current_func_exit_label = old_exit_label
-        self.assembly = main_assembly
+        self.emit.use_main_buffer()
 
     def visit_MethodCallNode(self, node):
-        """Translates the `object.method()` call to Assembly and secretly passes the pointer."""
+        """Translates object.method() calls and passes 'this' in RDI."""
         obj_type = self._get_obj_type(node.left_node)
-
         if not obj_type or obj_type == 'var':
-            raise Exception(f"Compiling Error: Unknown Class for Variable")
-        
+            raise Exception("Compiling Error: Unknown Class for Variable")
+
         method_raw_name = node.method_name_tok[1]
         method_info = self.class_layouts[obj_type]['methods'].get(method_raw_name)
-
-        if method_info and method_info['modifier'] == 'private' and self.current_class != obj_type:
-            raise Exception(f"Access Violation: '{method_raw_name}()' is private")
-
         declared_class = method_info['declared_in'] if method_info else obj_type
-        method_name = f"{declared_class}_{method_raw_name}"
+        method_name = f"cls_{declared_class}_{method_raw_name}"
 
         arg_count = len(node.arg_nodes) + 1
-
         if arg_count > 6:
             for i in range(len(node.arg_nodes) - 1, 4, -1):
                 self.generate(node.arg_nodes[i])
-                self.assembly.append("    push rax")
+                self.emit.push("rax")
 
         arg_registers = ['rdi', 'rsi', 'rdx', 'rcx', 'r8', 'r9']
-
         for i in range(min(5, len(node.arg_nodes))):
             self.generate(node.arg_nodes[i])
-            self.assembly.append(f"    push rax")
+            self.emit.push("rax")
 
         self.generate(node.left_node)
-        self.assembly.append("    push rax")
+        self.emit.mov("rdi", "rax")
 
-        self.assembly.append("    pop rdi")
         for i in range(min(5, len(node.arg_nodes)) - 1, -1, -1):
-            self.assembly.append(f"    pop {arg_registers[i+1]}")
-        
-        self.assembly.append(f"    call {method_name}")
+            self.emit.pop(arg_registers[i + 1])
+
+        self.emit.call(method_name)
 
         extra_args = max(0, arg_count - 6)
         if extra_args > 0:
-            self.assembly.append(f"    add rsp, {extra_args * 8}")
+            self.emit.add("rsp", extra_args * 8)
 
     def visit_ArrayLiteralNode(self, node):
-        """Turns the Array Literal into alloc and mov operations."""
+        """Allocates and populates an array literal."""
         element_count = len(node.elements)
         alloc_size = max((element_count + 1) * 8, 16)
 
-        self.assembly.append(f"    mov eax, {alloc_size}")
-        self.assembly.append("    mov rdi, rax")
-        self.assembly.append("    call rt_alloc")
-
-        self.assembly.append("    push rax")
+        self.emit.mov("edi", alloc_size)
+        self.emit.call_rt("rt_alloc")
+        self.emit.push("rax")
 
         for i, element_node in enumerate(node.elements):
             self.generate(element_node)
+            self.emit.mov("rbx", "qword [rsp]")
+            self.emit.mov(f"qword [rbx + {i * 8}]", "rax")
 
-            self.assembly.append("    mov rcx, rax")
-            self.assembly.append("    mov rbx, qword [rsp]")
-
-            offset = i * 8
-            self.assembly.append(f"    mov qword [rbx + {offset}], rcx")
-
-        null_offset = element_count * 8
-        self.assembly.append("    mov rbx, qword [rsp]")
-        self.assembly.append(f"    mov qword [rbx + {null_offset}], 0")
-
-        self.assembly.append("    pop rax")
+        self.emit.mov("rbx", "qword [rsp]")
+        self.emit.mov(f"qword [rbx + {element_count * 8}]", 0)
+        self.emit.pop("rax")
 
     def visit_SwitchNode(self, node):
         end_label = self.get_new_label("SWITCH_END")
         default_label = self.get_new_label("DEFAULT")
 
         self.generate(node.switch_expr)
-        self.assembly.append("    push rax")
+        self.emit.push("rax")
 
         case_labels = []
-
         for i, (case_expr, _) in enumerate(node.cases):
             block_label = self.get_new_label(f"CASE_BLOCK_{i}")
             next_label = self.get_new_label(f"CASE_NEXT_{i}")
             case_labels.append(block_label)
 
             self.generate(case_expr)
+            self.emit.cmp("qword [rsp]", "rax")
+            self.emit.jcc("ne", next_label)
 
-            self.assembly.append("    mov rbx, rax")
-            self.assembly.append("    mov rax, qword [rsp]")
-            self.assembly.append("    cmp rax, rbx")
-            self.assembly.append(f"    jne {next_label}")
+            self.emit.add("rsp", 8)
+            self.emit.jmp(block_label)
+            self.emit.label(next_label)
 
-            self.assembly.append("    add rsp, 8")
-            self.assembly.append(f"    jmp {block_label}")
-
-            self.assembly.append(f"{next_label}:")
-        
-        self.assembly.append("    add rsp, 8")
-        if node.default_case:
-            self.assembly.append(f"    jmp {default_label}")
-        else: 
-            self.assembly.append(f"    jmp {end_label}")
+        self.emit.add("rsp", 8)
+        self.emit.jmp(default_label if node.default_case else end_label)
 
         for i, (_, block) in enumerate(node.cases):
-            self.assembly.append(f"{case_labels[i]}:")
+            self.emit.label(case_labels[i])
             self.generate(block)
-            self.assembly.append(f"    jmp {end_label}")
+            self.emit.jmp(end_label)
 
         if node.default_case:
-            self.assembly.append(f"{default_label}:")
+            self.emit.label(default_label)
             self.generate(node.default_case)
 
-        self.assembly.append(f"{end_label}:")
+        self.emit.label(end_label)
 
     def visit_CastNode(self, node):
         """Does Type Casting."""
         self.generate(node.node)
         target_type = node.type_tok[1]
         source_type = getattr(node.node, 'eval_type', 'int')
-        
+
         if target_type in ('str', 'string'):
             if source_type in ('int', 'integer'):
-                self.assembly.append("    mov rdi, rax")
-                self.assembly.append("    call rt_int_to_str")
+                self.emit.mov("rdi", "rax")
+                self.emit.call_rt("rt_int_to_str")
             elif source_type in ('bool', 'boolean'):
-                self.assembly.append("    mov rdi, rax")
-                self.assembly.append("    call rt_bool_to_str")
+                self.emit.mov("rdi", "rax")
+                self.emit.call_rt("rt_bool_to_str")
             elif source_type == 'char':
-                self.assembly.append("    mov rdi, rax")
-                self.assembly.append("    call rt_char_to_str")
-                
+                self.emit.mov("rdi", "rax")
+                self.emit.call_rt("rt_char_to_str")
+
         elif target_type == 'bool':
             if source_type == 'double':
-                self.assembly.append("    pxor xmm1, xmm1")
-                self.assembly.append("    ucomisd xmm0, xmm1")
-                self.assembly.append("    setne al")
-                self.assembly.append("    movzx rax, al")
+                self.emit.inst("movq", "xmm0", "rax")
+                self.emit.inst("pxor", "xmm1", "xmm1")
+                self.emit.inst("ucomisd", "xmm0", "xmm1")
+                self.emit.inst("setne", "al")
+                self.emit.inst("movzx", "rax", "al")
             elif source_type in ('str', 'string'):
-                self.assembly.append("    cmp byte [rax], 0")
-                self.assembly.append("    setne al")
-                self.assembly.append("    movzx rax, al")
+                self.emit.cmp("byte [rax]", 0)
+                self.emit.inst("setne", "al")
+                self.emit.inst("movzx", "rax", "al")
             elif source_type == 'null':
-                self.assembly.append("    xor eax, eax")
-            else: 
-                self.assembly.append("    test rax, rax")
-                self.assembly.append("    setne al")
-                self.assembly.append("    movzx rax, al")
+                self.emit.mov("rax", 0)
+            else:
+                self.emit.cmp("rax", 0)
+                self.emit.inst("setne", "al")
+                self.emit.inst("movzx", "rax", "al")
 
         elif target_type in ('int', 'integer') and source_type in ('str', 'string'):
-            self.assembly.append("    mov rdi, rax")
-            self.assembly.append("    call rt_str_to_int")
-            
+            self.emit.mov("rdi", "rax")
+            self.emit.call_rt("rt_str_to_int")
+
         elif target_type == 'double' and source_type in ('int', 'integer', 'any', 'var'):
-            self.assembly.append("    cvtsi2sd xmm0, rax")
-            self.assembly.append("    movq rax, xmm0")
-            
+            self.emit.inst("cvtsi2sd", "xmm0", "rax")
+            self.emit.inst("movq", "rax", "xmm0")
+
         elif target_type in ('int', 'integer') and source_type == 'double':
-            self.assembly.append("    movq xmm0, rax")
-            self.assembly.append("    cvttsd2si rax, xmm0")
-            
+            self.emit.inst("movq", "xmm0", "rax")
+            self.emit.inst("cvttsd2si", "rax", "xmm0")
+
         elif target_type == 'char' and source_type in ('str', 'string', 'any'):
-            self.assembly.append("    movzx rax, byte [rax]")
+            self.emit.inst("movzx", "rax", "byte [rax]")
                     
     def visit_DeleteNode(self, node):
         self.generate(node.target_node)
-        self.assembly.append("    mov rdi, rax")
-        self.assembly.append("    call rt_free")
+        self.emit.mov("rdi", "rax")
+        self.emit.call_rt("rt_free")
 
     def visit_AllegeNode(self, node):
         self.generate(node.condition)
-        self.assembly.append("    test rax, rax")
-        
         ok_lbl = self.get_new_label("ALLEGE_OK")
-        self.assembly.append(f"    jne {ok_lbl}")
-
-        self.assembly.append("    mov eax, 1") # Allege Error Code (1)
-        self.assembly.append("    mov rbx, qword [rel global_err_frame]")
-        self.assembly.append("    cmp rbx, 0")
-        crash_lbl = self.get_new_label("CRASH")
-        self.assembly.append(f"    je {crash_lbl}") 
-        self.assembly.append("    mov rcx, qword [rbx + 24]")
-        self.assembly.append("    mov qword [rel global_err_frame], rcx")
-        self.assembly.append("    mov rdx, qword [rbx + 16]")
-        self.assembly.append("    mov rbp, qword [rbx + 8]")
-        self.assembly.append("    mov rsp, qword [rbx]")
-        self.assembly.append("    jmp rdx") 
-        
-        self.assembly.append(f"{crash_lbl}:")
-        self.assembly.append("    mov rdi, rax")
-        self.assembly.append("    mov eax, 60")
-        self.assembly.append("    syscall") 
-        
-        self.assembly.append(f"{ok_lbl}:")
+        self.emit.cmp("rax", 0)
+        self.emit.jcc("ne", ok_lbl)
+        self._emit_raise_error(1)
+        self.emit.label(ok_lbl)
 
     def visit_LimitsNode(self, node):
         self.generate(node.start_node)
-        self.assembly.append("    push rax")
-        
+        self.emit.push("rax")
+
         self.generate(node.end_node)
-        self.assembly.append("    mov rbx, rax")
-        self.assembly.append("    pop rax")
-        self.assembly.append("    mov rcx, rbx")
-        self.assembly.append("    sub rcx, rax")
-        
+        self.emit.mov("rbx", "rax")
+        self.emit.pop("rax")
+        self.emit.mov("rcx", "rbx")
+        self.emit.sub("rcx", "rax")
+
         ok_lbl = self.get_new_label("LIMITS_OK")
-        self.assembly.append("    cmp rcx, 0")
-        self.assembly.append(f"    jg {ok_lbl}")
-        self.assembly.append("    mov ecx, 1")
-        self.assembly.append(f"{ok_lbl}:")
-        self.assembly.append("    push rax") 
-        self.assembly.append("    push rcx")
+        self.emit.cmp("rcx", 0)
+        self.emit.jcc("g", ok_lbl)
+        self.emit.mov("ecx", 1)
+        self.emit.label(ok_lbl)
 
-        self.assembly.append("    mov rdi, rcx")
-        self.assembly.append("    shl rdi, 3") 
-        self.assembly.append("    call rt_alloc")
-        self.assembly.append("    mov r8, rax")
+        self.emit.push("rax")
+        self.emit.push("rcx")
 
-        self.assembly.append("    pop rcx") 
-        self.assembly.append("    pop rax")
+        self.emit.mov("rdi", "rcx")
+        self.emit.inst("shl", "rdi", 3)
+        self.emit.call_rt("rt_alloc")
+        self.emit.mov("r8", "rax")
 
-        xor_r9 = "    xor r9d, r9d"
-        self.assembly.append(xor_r9)
+        self.emit.pop("rcx")
+        self.emit.pop("rax")
+
+        self.emit.mov("r9", 0)
         loop_start = self.get_new_label("LIMITS_LOOP")
         loop_end = self.get_new_label("LIMITS_END")
 
-        self.assembly.append(f"{loop_start}:")
-        self.assembly.append("    cmp r9, rcx")
-        self.assembly.append(f"    jge {loop_end}")
+        self.emit.label(loop_start)
+        self.emit.cmp("r9", "rcx")
+        self.emit.jcc("ge", loop_end)
 
-        self.assembly.append("    mov qword [r8 + r9*8], rax")
-        self.assembly.append("    inc rax") 
-        self.assembly.append("    inc r9") 
-        self.assembly.append(f"    jmp {loop_start}")
-        
-        self.assembly.append(f"{loop_end}:")
-        self.assembly.append("    mov rax, r8")
+        self.emit.mov("qword [r8 + r9*8]", "rax")
+        self.emit.add("rax", 1)
+        self.emit.add("r9", 1)
+        self.emit.jmp(loop_start)
+
+        self.emit.label(loop_end)
+        self.emit.mov("rax", "r8")
 
     def visit_BreakNode(self, node):
         if not self.loop_stack:
             raise Exception("Semantic Error: 'break' can only be used in a loop.")
         _, end_label = self.loop_stack[-1]
-        self.assembly.append(f"    jmp {end_label}")
+        self.emit.jmp(end_label)
 
     def visit_GoonNode(self, node):
         if not self.loop_stack:
             raise Exception("Semantic Error: 'goon' can only be used in a loop.")
         continue_label, _ = self.loop_stack[-1]
-        self.assembly.append(f"    jmp {continue_label}")
+        self.emit.jmp(continue_label)
 
 if __name__ == '__main__':
     from lexer import tokenize
@@ -2820,7 +1942,7 @@ if __name__ == '__main__':
     from semantic import SemanticAnalyzer
 
     test_code = """
-    
+    print("Hello World!");
     """
 
     #1. FRONTEND
