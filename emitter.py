@@ -87,6 +87,8 @@ class AsmEmitter:
         self._target.append(line)
 
     def label(self, name):
+        if self._target and self._target[-1] == f"    jmp {name}":
+            self._target.pop()
         self._target.append(f"{name}:")
 
     def comment(self, text):
@@ -132,16 +134,27 @@ class AsmEmitter:
         self._target.append(f"    push {reg}")
 
     def pop(self, reg):
-        # Peephole: If pushing to same register as the one instruction up pop both
-        if self._target and self._target[-1] == f"    push {reg}":
-            self._target.pop()
-            return
+        if self._target:
+            last = self._target[-1]
+            # push [register_x] + pop [register_x] -> delete entirely
+            if last == f"push {reg}":
+                self._target.pop()
+                return
+            # push [register_x] + pop [register_y] -> mov [register_y], [register_x]
+            if last.startswith("    push "):
+                src_reg = last[9:]
+                self._target[-1] = f"    mov {reg}, {src_reg}"
+                return
         self._target.append(f"    pop {reg}")
 
     def lea(self, dst, src):
         self._target.append(f"    lea {dst}, {src}")
 
     def jmp(self, label):
+        if self._target:
+            last = self._target[-1].strip()
+            if last.startswith("jmp ") or last == "ret":
+                return
         self._target.append(f"    jmp {label}")
 
     def jcc(self, cond, label):
