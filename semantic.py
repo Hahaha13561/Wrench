@@ -26,9 +26,10 @@ class SemanticAnalyzer:
         'get_mem32': 'int',
         'syscall': 'int',
 
-        'read': 'string',
-        'type_of': 'string',
-        'sys_argv': 'string',
+        'read': 'str',
+        'type_of': 'str',
+        'sys_argv': 'str',
+        'str_ndup': 'str',
 
         'alloc': 'ptr',
         'realloc': 'ptr',
@@ -47,13 +48,23 @@ class SemanticAnalyzer:
 
                 for method in node.methods:
                     m_name = method.func_name_tok[1]
+                    m_mod = method.modifier_tok[1] if method.modifier_tok else 'public'
                     ret_type = method.return_type_tok[1] if method.return_type_tok else 'unit'
-                    self.methods[class_name][m_name] = ret_type
+                    self.methods[class_name][m_name] = {
+                        'return_type': ret_type,
+                        'modifier': m_mod,
+                        'declared_in': class_name
+                    }
 
                 for modifier_tok, type_tok, name_tok in node.fields:
                     f_name = name_tok[1]
                     f_type = type_tok[1] if type_tok else 'var'
-                    self.fields[class_name][f_name] = f_type
+                    f_mod  = modifier_tok[1] if modifier_tok else 'public'
+                    self.fields[class_name][f_name] = {
+                        'type': f_type,
+                        'modifier': f_mod,
+                        'declared_in': class_name
+                    }
 
             elif type(node).__name__ == 'FuncDefNode':
                 f_name = node.func_name_tok[1]
@@ -130,14 +141,28 @@ class SemanticAnalyzer:
             raise Exception(f"Semantic Error: '{context}' should be 'int' or 'hex', given '{idx_type}'")
         return idx_type
 
-    def get_field_type(self, class_name, field_name):
-        """Finds the field type, scanning the class hierarchy upwards."""
+    def get_field_info(self, class_name, field_name):
+        """Finds field info dict, scanning class hierarchy upwards."""
         curr = class_name
-        while curr: #ion currrrrrr
+        while curr:
             if curr in self.fields and field_name in self.fields[curr]:
                 return self.fields[curr][field_name]
             curr = self.class_hierarchy.get(curr)
         return None
+
+    def get_method_info(self, class_name, method_name):
+        """Finds method info dict, scanning class hierarchy upwards."""
+        curr = class_name
+        while curr:
+            if curr in self.methods and method_name in self.methods[curr]:
+                return self.methods[curr][method_name]
+            curr = self.class_hierarchy.get(curr)
+        return None
+
+    def get_field_type(self, class_name, field_name):
+        """Finds the field type, scanning the class hierarchy upwards."""
+        info = self.get_field_info(class_name, field_name)
+        return info['type'] if info else None
 
     def lookup_var_type(self, var_name):
         """Searches scope hierarchy backwards for a variable type."""
@@ -364,10 +389,14 @@ class SemanticAnalyzer:
             self.visit(arg)
 
         m_name = node.method_name_tok[1]
+        method_info = self.get_method_info(obj_type, m_name)
+
         ret_type = 'any'
-        if obj_type in self.methods and m_name in self.methods[obj_type]:
-            ret_type = self.methods[obj_type][m_name]
-        
+        if method_info:
+            if method_info['modifier'] == 'private' and self.current_class != method_info['declared_in']:
+                raise Exception(f"Access Violation: Method '{m_name}()' is private to '{method_info['declared_in']}'")
+            ret_type = method_info['return_type']
+
         node.eval_type = ret_type
         return ret_type
 
@@ -376,9 +405,14 @@ class SemanticAnalyzer:
         obj_type = self.visit(node.left_node)
         m_name = node.member_name_tok[1]
 
+        field_info = self.get_field_info(obj_type, m_name)
+
         ret_type = 'any'
-        if obj_type in self.fields and m_name in self.fields[obj_type]:
-            ret_type = self.fields[obj_type][m_name]
+        if field_info:
+            if field_info['modifier'] == 'private' and self.current_class != field_info['declared_in']:
+                raise Exception(f"Access Violation: Field '{m_name}' is private to '{field_info['declared_in']}'")
+            ret_type = field_info['type']
+
         node.eval_type = ret_type
         return ret_type
 
@@ -387,11 +421,17 @@ class SemanticAnalyzer:
         obj_type = self.visit(node.left_node)
         m_name = node.member_name_tok[1]
 
-        field_type = self.get_field_type(obj_type, m_name)
+        field_info = self.get_field_info(obj_type, m_name)
 
-        if field_type is None and obj_type != 'any':
+        if field_info is None and obj_type != 'any':
             if self.strict_mode:
                 raise Exception(f"Semantic Error: No such field as '{m_name}' in class: '{obj_type}'")
+            field_type = 'any'
+        elif field_info:
+            if field_info['modifier'] == 'private' and self.current_class != field_info['declared_in']:
+                raise Exception(f"Access Violation: Field '{m_name}' is private to '{field_info['declared_in']}'")
+            field_type = field_info['type']
+        else:
             field_type = 'any'
 
         value_type = self.visit(node.value_node)
